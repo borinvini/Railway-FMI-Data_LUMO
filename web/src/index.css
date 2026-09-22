@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+/* Dark-mode-only palette, approved by the user in prototype/ — see CLAUDE.md "Map style". */
+:root {
+  --bg: #0b0b0c;
+  --surface: rgba(18, 18, 20, 0.82);
+  --line: rgba(255, 255, 255, 0.08);
+  --text: #e8e8ea;
+  --muted: #8b8b92;
+  --gold: #e5c163;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font: 300 15px/1.45 system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+.maplibregl-ctrl-attrib {
+  background: transparent !important;
+  color: #666 !important;
+}
+.maplibregl-ctrl-attrib a {
+  color: #777 !important;
+}
+.deck-tooltip {
+  font: 300 13px system-ui, sans-serif !important;
+}
+.maplibregl-ctrl-top-right {
+  top: 84px !important;
+  right: 20px;
+}
+.maplibregl-ctrl-group {
+  background: var(--surface) !important;
+  border: 1px solid var(--line) !important;
+  backdrop-filter: blur(8px);
+  box-shadow: none !important;
+}
+.maplibregl-ctrl-group button {
+  background: transparent !important;
+}
+.maplibregl-ctrl-group button + button {
+  border-top: 1px solid var(--line) !important;
+}

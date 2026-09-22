@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Map style test — MapLibre + Snazzy palette</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4/dist/maplibre-gl.css">
+<style>
+  :root {
+    --bg: #0b0b0c;
+    --surface: rgba(18, 18, 20, .82);
+    --line: rgba(255, 255, 255, .08);
+    --text: #e8e8ea;
+    --muted: #8b8b92;
+    --gold: #e5c163;
+  }
+  #horizon { position: absolute; inset: 0 0 auto 0; height: 40%;
+    background: linear-gradient(to bottom, var(--bg), rgba(11,11,12,0)); pointer-events: none; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 300 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #map { position: absolute; inset: 0; }
+  .card { position: absolute; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 10px; backdrop-filter: blur(8px); padding: 16px 18px; }
+  #title { top: 20px; left: 20px; }
+  #title h1 { margin: 0; font-size: 18px; font-weight: 300; letter-spacing: .02em; }
+  #title p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+  #legend { bottom: 24px; left: 20px; width: 230px; }
+  #legend .bar { height: 6px; border-radius: 3px; margin: 8px 0 6px;
+    background: linear-gradient(90deg, #5eead4, #fbbf24, #f43f5e); }
+  #legend .ends { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; }
+  #legend .lab { font-size: 12px; color: var(--muted); }
+  #panel { top: 20px; right: 20px; width: 290px; display: none; }
+  #panel.on { display: block; }
+  #panel .route { font-size: 18px; font-weight: 300; margin: 0 0 2px; }
+  #panel .sub { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+  #panel .big { font-size: 40px; font-weight: 200; line-height: 1; }
+  #panel .unit { color: var(--muted); font-size: 13px; margin: 2px 0 14px; }
+  #panel .row { display: flex; justify-content: space-between; padding: 8px 0;
+    border-top: 1px solid var(--line); font-size: 14px; }
+  #panel .row span:first-child { color: var(--muted); }
+  #panel .x { position: absolute; top: 10px; right: 14px; cursor: pointer; color: var(--muted); }
+  #note { bottom: 24px; right: 20px; color: var(--muted); font-size: 12px; max-width: 260px; padding: 10px 14px; }
+  .maplibregl-ctrl-attrib { background: transparent !important; color: #666 !important; }
+  .maplibregl-ctrl-attrib a { color: #777 !important; }
+  .deck-tooltip { font: 300 13px system-ui, sans-serif !important; }
+  #reset { bottom: 24px; left: 270px; display: flex; align-items: center; gap: 7px;
+    padding: 10px 14px; cursor: pointer; color: var(--muted); font-size: 13px;
+    transition: opacity .15s, color .15s; opacity: 0; pointer-events: none; }
+  #reset.show { opacity: 1; pointer-events: auto; }
+  #reset:hover { color: var(--text); }
+  #reset svg { width: 14px; height: 14px; }
+  .maplibregl-ctrl-top-right { top: 84px !important; right: 20px; }
+  .maplibregl-ctrl-group { background: var(--surface) !important; border: 1px solid var(--line) !important;
+    backdrop-filter: blur(8px); box-shadow: none !important; }
+  .maplibregl-ctrl-group button { background: transparent !important; }
+  .maplibregl-ctrl-group button + button { border-top: 1px solid var(--line) !important; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="horizon"></div>
+
+<div id="title" class="card">
+  <h1>Finnish railways · January 2020</h1>
+  <p>Click a route to see how late it ran</p>
+</div>
+
+<div id="legend" class="card">
+  <div class="lab">Average delay on arrival</div>
+  <div class="bar"></div>
+  <div class="ends"><span>on time</span><span>8+ min late</span></div>
+</div>
+
+<div id="panel" class="card">
+  <span class="x" id="close">✕</span>
+  <p class="route" id="p-route"></p>
+  <div class="sub" id="p-sub"></div>
+  <div class="big" id="p-avg"></div>
+  <div class="unit">minutes late, on average</div>
+  <div class="row"><span>Arrived within 5 min</span><span id="p-ontime"></span></div>
+  <div class="row"><span>Trips in the month</span><span id="p-runs"></span></div>
+  <div class="row"><span>Stops on the way</span><span id="p-stops"></span></div>
+</div>
+
+<div id="note" class="card">Style test only. Route delays are real (parquet, arrival at destination); weather panel not built yet.</div>
+
+<div id="reset" class="card">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+  Reset view
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4/dist/maplibre-gl.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/deck.gl@9/dist.min.js"></script>
+<script>
+// ---- Snazzy "Multi Brand Network" palette (Google "lightness" values approximated as hex) ----
+const P = {
+  land:  '#2e2e2e',
+  finlandLand: '#3b3b3b',  // Finland highlighted a step lighter than the rest
+  outsideDim: 0.5,         // black overlay strength outside Finland
+  water: '#222222',
+  road:  '#575757',
+  gold:  '#e5c163',     // highways + country labels in the original
+  city:  '#c4c4c4',     // locality labels in the original
+  label: '#999999',
+  halo:  '#000000',
+};
+
+// Layers kept (recoloured); everything else is hidden for a minimalist look.
+const HIDE_PREFIX = ['landcover', 'landuse', 'building', 'aeroway', 'road_', 'highway_path',
+  'highway_minor', 'highway_major_casing', 'highway_major_subtle', 'highway_motorway_casing',
+  'highway_motorway_subtle', 'highway_name', 'railway', 'place_other', 'place_suburb', 'place_village'];
+
+function restyle(style, finland) {
+  style.layers = style.layers.filter(l => l.type !== 'raster');   // drop shaded-relief raster
+  style.sources.finland = { type: 'geojson', data: finland };
+  for (const l of style.layers) {
+    const id = l.id;
+    l.paint = l.paint || {};
+    if (HIDE_PREFIX.some(p => id.startsWith(p))) { l.layout = { ...(l.layout||{}), visibility: 'none' }; continue; }
+    if (id === 'background')      l.paint['background-color'] = P.land;
+    else if (id === 'water')      l.paint['fill-color'] = P.water;
+    else if (id === 'waterway')   l.paint['line-color'] = P.water;
+    else if (id === 'water_name') { l.paint['text-color'] = '#555'; l.paint['text-halo-color'] = P.halo; }
+    else if (id === 'highway_major_inner')   { l.paint['line-color'] = P.road; l.paint['line-opacity'] = .35; }
+    else if (id === 'highway_motorway_inner'){ l.paint['line-color'] = P.gold; l.paint['line-opacity'] = .28; }
+    else if (id.startsWith('boundary_country')) { l.paint['line-color'] = P.gold; l.paint['line-opacity'] = .35; }
+    else if (id.startsWith('boundary')) { l.paint['line-color'] = '#444'; }
+    else if (id.startsWith('place_country')) { l.paint['text-color'] = P.gold; l.paint['text-halo-color'] = P.halo; }
+    else if (id.startsWith('place_')) {
+      l.paint['text-color'] = (id === 'place_state') ? P.label : P.city;
+      l.paint['text-halo-color'] = P.halo; l.paint['text-halo-width'] = 1.2;
+    }
+  }
+  // Highlight Finland: lighter land under the water layers, dimmed mask over everything else.
+  const bgIdx = style.layers.findIndex(l => l.id === 'background');
+  style.layers.splice(bgIdx + 1, 0, {
+    id: 'finland-land', type: 'fill', source: 'finland', filter: ['==', ['get', 'kind'], 'land'],
+    paint: { 'fill-color': P.finlandLand },
+  });
+  style.layers.push(
+    { id: 'outside-mask', type: 'fill', source: 'finland', filter: ['==', ['get', 'kind'], 'mask'],
+      paint: { 'fill-color': '#000000', 'fill-opacity': P.outsideDim } },
+    { id: 'finland-outline', type: 'line', source: 'finland', filter: ['==', ['get', 'kind'], 'outline'],
+      paint: { 'line-color': P.gold, 'line-opacity': .6, 'line-width': 1.1 } },
+  );
+  return style;
+}
+
+// ---- delay colour ramp: teal -> amber -> rose, 0..8 min ----
+const STOPS = [[0x5e,0xea,0xd4],[0xfb,0xbf,0x24],[0xf4,0x3f,0x5e]];
+function delayColor(d, a = 255) {
+  const t = Math.max(0, Math.min(1, d / 8)) * 2, i = Math.min(1, Math.floor(t)), f = t - i;
+  const c = STOPS[i].map((v, k) => Math.round(v + (STOPS[i+1][k] - v) * f));
+  return [...c, a];
+}
+
+(async function () {
+  const [style, routes, finland] = await Promise.all([
+    fetch('https://tiles.openfreemap.org/styles/dark').then(r => r.json()),
+    fetch('data.json').then(r => r.json()),
+    fetch('finland.geojson').then(r => r.json()),
+  ]);
+
+  // Fixed camera, approved by the user — same on first load and on every reset, regardless of
+  // window size (a bounds+padding fit was tried first but recomputes slightly per viewport).
+  const DEFAULT_VIEW = {
+    center: [26.14445887543991, 67.15430550111654],
+    zoom: 4.125923656372987, pitch: 55, bearing: -12,
+  };
+
+  const map = new maplibregl.Map({
+    container: 'map', style: { version: 8, sources: {}, layers: [] },
+    ...DEFAULT_VIEW,
+    minZoom: 3.5, maxZoom: 9, maxPitch: 70, attributionControl: { compact: true },
+  });
+  map.setStyle(restyle(style, finland));
+
+  // Rotation/tilt stay enabled (dragRotate + touchZoomRotate default on) so visitors can explore
+  // the 3D view; a compass control plus this reset button stop anyone getting stuck at a
+  // confusing angle on an unattended kiosk.
+  map.addControl(new maplibregl.NavigationControl({ showZoom: false, visualizePitch: true }), 'top-right');
+
+  const resetBtn = document.getElementById('reset');
+  function updateResetVisibility() {
+    const drifted = Math.abs(map.getPitch() - DEFAULT_VIEW.pitch) > 1 || Math.abs(map.getBearing() - DEFAULT_VIEW.bearing) > 1
+      || Math.abs(map.getZoom() - DEFAULT_VIEW.zoom) > .3;
+    resetBtn.classList.toggle('show', drifted);
+  }
+  map.on('rotate', updateResetVisibility);
+  map.on('pitch', updateResetVisibility);
+  map.on('zoom', updateResetVisibility);
+  resetBtn.onclick = () => map.flyTo({ ...DEFAULT_VIEW, duration: 600 });
+
+  window.map = map;
+  map.on('error', e => console.error('MAPERR', e.error && e.error.message, e.sourceId || ''));
+
+  let hovered = null, selected = null;
+
+  function layers() {
+    const dim = selected !== null;
+    const isSel = d => selected && d.id === selected.id;
+    const alpha = (d, hi, lo) => isSel(d) || d === hovered ? hi : (dim ? lo : hi);
+    return [
+      new deck.PathLayer({           // soft glow underneath
+        id: 'glow', data: routes, getPath: d => d.path, widthUnits: 'pixels',
+        getWidth: d => (isSel(d) ? 14 : 9), capRounded: true, jointRounded: true,
+        getColor: d => delayColor(d.avgDelay, alpha(d, 55, 8)),
+        updateTriggers: { getColor: [selected, hovered], getWidth: [selected] },
+      }),
+      new deck.PathLayer({           // bright core line
+        id: 'core', data: routes, pickable: true, autoHighlight: false,
+        getPath: d => d.path, widthUnits: 'pixels', widthMinPixels: 2,
+        getWidth: d => (isSel(d) || d === hovered ? 4 : 2.4), capRounded: true, jointRounded: true,
+        getColor: d => delayColor(d.avgDelay, alpha(d, 255, 55)),
+        onHover: ({ object }) => { hovered = object || null; overlay.setProps({ layers: layers() }); },
+        onClick: ({ object }) => select(object),
+        updateTriggers: { getColor: [selected, hovered], getWidth: [selected, hovered] },
+      }),
+      new deck.ScatterplotLayer({    // endpoints
+        id: 'ends', data: routes.flatMap(r => [r.path[0], r.path[r.path.length - 1]]),
+        getPosition: d => d, radiusUnits: 'pixels', getRadius: 3.2,
+        getFillColor: [240, 240, 245, 200],
+      }),
+    ];
+  }
+
+  const overlay = new deck.MapboxOverlay({
+    interleaved: false, layers: layers(), pickingRadius: 10,
+    getTooltip: ({ object }) => object && {
+      text: `${object.from_} → ${object.to}\n${object.avgDelay} min late on average`,
+      style: { background: 'rgba(18,18,20,.92)', color: '#e8e8ea', border: '1px solid rgba(255,255,255,.1)',
+               borderRadius: '8px', padding: '8px 10px', whiteSpace: 'pre' },
+    },
+  });
+  map.addControl(overlay);
+  window.overlay = overlay;
+
+  function select(o) {
+    selected = o || null;
+    const p = document.getElementById('panel');
+    if (!o) p.classList.remove('on');
+    else {
+      document.getElementById('p-route').textContent = `${o.from_.replace(/ asema$/, '')} → ${o.to.replace(/ asema$/, '')}`;
+      document.getElementById('p-sub').textContent = 'January 2020';
+      document.getElementById('p-avg').textContent = o.avgDelay.toFixed(1);
+      document.getElementById('p-ontime').textContent = o.onTimePct + '%';
+      document.getElementById('p-runs').textContent = o.runs;
+      document.getElementById('p-stops').textContent = o.path.length;
+      p.classList.add('on');
+    }
+    overlay.setProps({ layers: layers() });
+  }
+  document.getElementById('close').onclick = () => select(null);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') select(null); });
+  map.on('click', e => { if (!hovered) select(null); });
+})();
+</script>
+</body>
+</html>
