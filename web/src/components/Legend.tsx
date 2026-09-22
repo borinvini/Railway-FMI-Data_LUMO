@@ -5,7 +5,7 @@ export default function Legend() {
       <div className="text-xs text-(--muted)">Average delay at this station</div>
       <div
         className="my-2 h-1.5 rounded-full"
-        style={{ background: 'linear-gradient(90deg, #5eead4, #fbbf24, #f43f5e)' }}
+        style={{ background: 'linear-gradient(90deg, #34d399, #6366f1, #ec4899)' }}
       />
       <div className="flex justify-between text-xs text-(--muted)">
         <span>on time</span>

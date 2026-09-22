@@ -6,11 +6,13 @@ export const NETWORK_LINE_COLOR: [number, number, number] = [0xe5, 0xc1, 0x63]
  *  against the glow underneath it rather than blending into the same tone. */
 export const NETWORK_LINE_CORE_COLOR: [number, number, number] = [0xfd, 0xe4, 0xa8]
 
-/** Delay colour ramp: teal (on time) -> amber -> rose (8+ min late). See CLAUDE.md "Map style". */
+/** Delay colour ramp: emerald (on time) -> indigo -> magenta (8+ min late). Chosen to sit apart
+ *  from the gold routes/basemap accent rather than passing through amber, which read as nearly
+ *  the same colour as the gold network. See CLAUDE.md "Map style". */
 const DELAY_STOPS: [number, number, number][] = [
-  [0x5e, 0xea, 0xd4],
-  [0xfb, 0xbf, 0x24],
-  [0xf4, 0x3f, 0x5e],
+  [0x34, 0xd3, 0x99],
+  [0x63, 0x66, 0xf1],
+  [0xec, 0x48, 0x99],
 ]
 
 /** Average delay in minutes -> deck.gl RGBA colour, clamped to the 0-8 min ramp. */
