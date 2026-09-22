@@ -64,11 +64,14 @@ decisions; keep colours colour-blind safe and check contrast on dark.
 | UI surface | `rgba(18,18,20,.82)` + 1px `rgba(255,255,255,.08)` border, 10px radius, `backdrop-filter: blur(8px)` |
 | UI text / muted | `#e8e8ea` / `#8b8b92`, weight 300, `system-ui` |
 
-**Delay ramp** (single-hue magenta, orchid pink → fuchsia, by request -- mono-hue rather than a
-hue jump; luminance change carries the severity signal, which also survives colour-blindness.
-Earlier multi-hue passes -- teal→amber→rose, then emerald→indigo→magenta, then green→violet→hot
-pink -- either sat too close to the gold routes/basemap accent or read as an unwanted hue jump),
-linear interpolation over 0–8 min average delay: `#f5d0fe` → `#e879f9` → `#c026d3`.
+**Delay ramp** (teal → amber → rose, i.e. green/yellow/red; luminance also changes so it survives
+colour-blindness), linear interpolation over 0–8 min average delay: `#5eead4` → `#fbbf24` →
+`#f43f5e`. Restored by request after several multi-hue and mono-hue alternatives (emerald→indigo→
+magenta, green→violet→hot-pink, mono magenta) were tried and rejected.
+
+**Route line colour.** Connection lines are light magenta, not the basemap's gold accent (which
+they originally matched, and which the `Gold accent` row above still applies to for country
+labels/borders/motorways/Finland outline): glow `#e879f9`, core `#fbcfe8`.
 
 **Highlighting Finland.** The tiles have no per-country land shapes, so use a Finland outline
 (Natural Earth via `datasets/geo-countries`, ISO `FIN`, 42 polygons incl. Åland, ~112 KB,
