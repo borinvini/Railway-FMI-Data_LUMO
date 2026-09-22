@@ -445,29 +445,27 @@ def typical_passenger_stops(
 
 def station_network_edges(runs: pd.DataFrame, station_meta: pd.DataFrame) -> pd.DataFrame:
     """The physical station-to-station adjacency graph: one row per distinct
-    pair of passenger stations that are directly consecutive stops on at
-    least one run, anywhere in the dataset (not per-route -- the whole
-    network).
+    pair of stations that are directly consecutive stops on at least one
+    run, anywhere in the dataset (not per-route -- the whole network).
 
-    For each run, filters its full `stopSequence` down to passenger stations
-    (same filter as `typical_passenger_stops`), then takes every consecutive
-    pair in that filtered sequence as one edge. Pairs are undirected (an
-    edge between A and B is the same physical segment regardless of travel
-    direction), deduped across every run in the dataset.
+    Uses each run's full `stopSequence` -- every station, passenger or not
+    -- so the resulting edges trace the real physical curve of the line
+    through freight/technical stops too, not just straight jumps between
+    passenger stations. (Callers that only want passenger-to-passenger
+    connections should filter the result themselves; this only needs
+    `station_meta` for station names, not for a passenger filter.) Pairs
+    are undirected (an edge between A and B is the same physical segment
+    regardless of travel direction), deduped across every run in the
+    dataset.
 
     Returns: `from`, `to` (station codes, `from` < `to` alphabetically),
     `fromName`, `toName`, `runs` (how many runs traverse this edge, in
     either direction).
     """
-    passenger_codes = set(station_meta.index[station_meta["passengerTraffic"]])
     name_lookup = station_meta["name"].to_dict()
 
-    filtered = runs["stopSequence"].map(
-        lambda seq: tuple(c for c in seq if c in passenger_codes)
-    )
-
     pairs: list[tuple[str, str]] = []
-    for seq in filtered:
+    for seq in runs["stopSequence"]:
         for a, b in zip(seq, seq[1:]):
             pairs.append((a, b) if a < b else (b, a))
 

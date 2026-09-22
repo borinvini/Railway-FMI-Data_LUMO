@@ -1,11 +1,12 @@
 import { MapboxOverlay } from '@deck.gl/mapbox'
-import { PathLayer, ScatterplotLayer } from '@deck.gl/layers'
+import { IconLayer, PathLayer } from '@deck.gl/layers'
 import * as maplibregl from 'maplibre-gl'
 import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useEffect, useRef, useState } from 'react'
 import { delayColor, NETWORK_LINE_COLOR } from '../lib/colors'
 import { DEFAULT_VIEW, restyleBasemap } from '../lib/mapStyle'
+import { STATION_MARKER_ICON } from '../lib/markerIcon'
 import type { ConnectionFeature, FinlandGeoJSON, StationFeature } from '../lib/types'
 
 // MapLibre's worker (maplibre-gl-worker.mjs) imports a sibling chunk (maplibre-gl-shared.mjs)
@@ -62,30 +63,44 @@ export default function MapView({ stations, connections, finland, selected, onSe
     const touchesSelected = (d: ConnectionFeature) => sel !== null && (d.from === sel.code || d.to === sel.code)
 
     return [
+      // Soft glow underneath, same technique as the original prototype's route lines: a wide,
+      // translucent line under a crisp bright core reads as a glowing line rather than a flat
+      // stroke. Both layers share the same path (now traced through every physical stop,
+      // passenger or not, so the curve follows the real rail alignment instead of jumping
+      // straight between distant passenger stations).
       new PathLayer<ConnectionFeature>({
-        id: 'connections', data: currentConnections,
+        id: 'connections-glow', data: currentConnections,
         getPath: (d) => [[d.fromLon, d.fromLat], [d.toLon, d.toLat]],
         widthUnits: 'pixels', capRounded: true,
-        getWidth: (d) => (touchesSelected(d) ? 2.2 : 1.2),
-        getColor: (d) => [...NETWORK_LINE_COLOR, touchesSelected(d) ? 210 : dim ? 25 : 95],
+        getWidth: (d) => (touchesSelected(d) ? 6 : 4),
+        getColor: (d) => [...NETWORK_LINE_COLOR, touchesSelected(d) ? 90 : dim ? 8 : 35],
         updateTriggers: { getColor: [sel], getWidth: [sel] },
       }),
-      new ScatterplotLayer<StationFeature>({
-        id: 'stations', data: currentStations, pickable: true, stroked: true,
-        getPosition: (d) => [d.lon, d.lat], radiusUnits: 'pixels', lineWidthUnits: 'pixels',
-        getRadius: (d) => (isSel(d) ? 7 : isHovered(d) ? 6 : 3.6),
-        getFillColor: (d) => delayColor(d.avgDelay, isSel(d) || isHovered(d) ? 255 : dim ? 130 : 220),
-        getLineColor: (d) => (isSel(d) ? [229, 193, 99, 255] : [0, 0, 0, 0]),
-        getLineWidth: (d) => (isSel(d) ? 2 : 0),
+      new PathLayer<ConnectionFeature>({
+        id: 'connections-core', data: currentConnections,
+        getPath: (d) => [[d.fromLon, d.fromLat], [d.toLon, d.toLat]],
+        widthUnits: 'pixels', capRounded: true,
+        getWidth: (d) => (touchesSelected(d) ? 3 : 2),
+        getColor: (d) => [...NETWORK_LINE_COLOR, touchesSelected(d) ? 255 : dim ? 35 : 160],
+        updateTriggers: { getColor: [sel], getWidth: [sel] },
+      }),
+      // Stick-and-ball markers, anchored at the station point and rising above it -- this,
+      // combined with the tilted camera, is what gives the map its 3D feel rather than flat
+      // dots. Single grayscale icon (see lib/markerIcon.ts), tinted per-station via getColor
+      // (mask: true) with the same delay ramp the dots used.
+      new IconLayer<StationFeature>({
+        id: 'stations', data: currentStations, pickable: true,
+        getPosition: (d) => [d.lon, d.lat],
+        getIcon: () => STATION_MARKER_ICON,
+        sizeUnits: 'pixels',
+        getSize: (d) => (isSel(d) ? 46 : isHovered(d) ? 40 : 30),
+        getColor: (d) => delayColor(d.avgDelay, isSel(d) || isHovered(d) ? 255 : dim ? 130 : 220),
         onHover: ({ object }) => {
           hoveredRef.current = (object as StationFeature | undefined) ?? null
           overlayRef.current?.setProps({ layers: buildLayers() })
         },
         onClick: ({ object }) => onSelectRef.current((object as StationFeature | undefined) ?? null),
-        updateTriggers: {
-          getRadius: [sel, hovered], getFillColor: [sel, hovered],
-          getLineColor: [sel], getLineWidth: [sel],
-        },
+        updateTriggers: { getSize: [sel, hovered], getColor: [sel, hovered] },
       }),
     ]
   }

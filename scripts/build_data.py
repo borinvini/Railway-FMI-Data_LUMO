@@ -1,9 +1,11 @@
 """Build web/public/data/*.json from the parquet + station metadata.
 
 First implementation: produces the two files the home page's station network
-map needs -- stations.json (map dots + selection menu) and connections.json
-(the lines between directly-adjacent stations). Both are scoped to passenger
-stations only (passengerTraffic == True), per the current home-page design.
+map needs -- stations.json (map dots + selection menu; passenger stations
+only) and connections.json (the lines between directly-adjacent stations).
+connections.json includes non-passenger stations too, as waypoints only --
+they give the lines their real physical curve, but never get a marker and
+never appear in stations.json / the selection menu.
 
 finland.geojson is static (Natural Earth-derived) and already correct in
 web/public/data/ -- this script does not touch it.
@@ -61,12 +63,24 @@ def build_stations_payload(stations) -> list[dict]:
     return payload
 
 
-def build_connections_payload(edges, stations_by_code: dict) -> list[dict]:
+def build_coord_lookup(stations) -> dict:
+    """code -> {lat, lon} for every station (passenger or not), for resolving
+    connections.json edge endpoints -- deliberately not filtered to
+    passenger stations, unlike build_stations_payload()."""
+    lookup = {}
+    for _, row in stations.iterrows():
+        lat, lon = _round_or_none(row["lat"], 6), _round_or_none(row["lon"], 6)
+        if lat is not None and lon is not None:
+            lookup[row["code"]] = {"lat": lat, "lon": lon}
+    return lookup
+
+
+def build_connections_payload(edges, coords_by_code: dict) -> list[dict]:
     payload = []
     skipped = 0
     for _, row in edges.iterrows():
-        a = stations_by_code.get(row["from"])
-        b = stations_by_code.get(row["to"])
+        a = coords_by_code.get(row["from"])
+        b = coords_by_code.get(row["to"])
         if a is None or b is None:
             # Endpoint missing coordinates (not in the metadata CSV) --
             # can't draw a line segment for it.
@@ -120,8 +134,8 @@ def main() -> int:
         print(f"[build_data] {len(missing)} station(s) without coordinates: {', '.join(missing)}")
 
     stations_payload = build_stations_payload(stations)
-    stations_by_code = {s["code"]: s for s in stations_payload}
-    connections_payload = build_connections_payload(edges, stations_by_code)
+    coords_by_code = build_coord_lookup(stations)
+    connections_payload = build_connections_payload(edges, coords_by_code)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     STATIONS_JSON.write_text(
