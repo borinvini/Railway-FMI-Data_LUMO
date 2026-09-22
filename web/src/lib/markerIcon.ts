@@ -30,3 +30,23 @@ export const STATION_MARKER_ICON = {
   anchorY: SIZE,
   mask: true,
 } as const
+
+// Same pin, but with a stroke added around the same path -- rendered at the SAME on-screen size
+// as STATION_MARKER_ICON (not scaled up), this expands the pin's outer edge outward by half the
+// stroke width *and* shrinks its inner hole by half the stroke width, since SVG strokes straddle
+// both sides of a path. Tinted solid black and drawn underneath the coloured pin, that gives a
+// uniform ring around the whole silhouette -- outer edge and the punched-through hole alike --
+// instead of a plain bigger copy of the pin sitting behind it (which only outlines the outer
+// edge and distorts the hole).
+const outlineSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${SIZE}" height="${SIZE}" viewBox="0 0 24 24">
+  <path fill-rule="evenodd" clip-rule="evenodd" d="${PIN_PATH}" fill="white" stroke="white" stroke-width="1.6"/>
+</svg>`
+
+export const STATION_MARKER_OUTLINE_ICON = {
+  url: `data:image/svg+xml;utf8,${encodeURIComponent(outlineSvg)}`,
+  width: SIZE,
+  height: SIZE,
+  anchorX: SIZE / 2,
+  anchorY: SIZE,
+  mask: true,
+} as const

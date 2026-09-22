@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from 'react'
 import { delayColor, NETWORK_LINE_COLOR, NETWORK_LINE_CORE_COLOR } from '../lib/colors'
 import { TOP_10_STATION_CODES } from '../lib/importantStations'
 import { DEFAULT_VIEW, restyleBasemap } from '../lib/mapStyle'
-import { STATION_MARKER_ICON } from '../lib/markerIcon'
+import { STATION_MARKER_ICON, STATION_MARKER_OUTLINE_ICON } from '../lib/markerIcon'
 import type { ConnectionFeature, FinlandGeoJSON, StationFeature } from '../lib/types'
 
 // At the default zoom, only Finland's 10 biggest cities show a marker (see
@@ -109,16 +109,16 @@ export default function MapView({ stations, connections, finland, selected, onSe
         getColor: (d) => [...NETWORK_LINE_CORE_COLOR, touchesSelected(d) ? 255 : dim ? 60 : 235],
         updateTriggers: { getColor: [sel], getWidth: [sel] },
       }),
-      // Black outline underneath the coloured pin: the same mask icon, a few pixels larger and
-      // tinted solid black, so it peeks out as a rim around the coloured pin drawn on top --
-      // same glow-under-core trick the route lines use. Not pickable; the coloured pin above
-      // handles hover/click.
+      // Black outline underneath the coloured pin: a stroked variant of the same icon (see
+      // lib/markerIcon.ts), rendered at the SAME size as the pin above rather than scaled up --
+      // the stroke is baked into the icon's own geometry, so it rings both the outer edge and
+      // the punched-through hole evenly. Not pickable; the coloured pin above handles hover/click.
       new IconLayer<StationFeature>({
         id: 'stations-outline', data: currentStations,
         getPosition: (d) => [d.lon, d.lat],
-        getIcon: () => STATION_MARKER_ICON,
+        getIcon: () => STATION_MARKER_OUTLINE_ICON,
         sizeUnits: 'pixels',
-        getSize: (d) => (!isRevealed(d) ? 0 : isSel(d) ? 51 : isHovered(d) ? 45 : 35),
+        getSize: (d) => (!isRevealed(d) ? 0 : isSel(d) ? 46 : isHovered(d) ? 40 : 30),
         getColor: (d) => [10, 10, 12, isSel(d) || isHovered(d) ? 255 : dim ? 130 : 220],
         updateTriggers: { getSize: [sel, hovered, revealT], getColor: [sel, hovered] },
       }),
