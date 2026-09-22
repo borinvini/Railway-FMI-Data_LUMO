@@ -5,9 +5,17 @@ import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useEffect, useRef, useState } from 'react'
 import { delayColor, NETWORK_LINE_COLOR, NETWORK_LINE_CORE_COLOR } from '../lib/colors'
+import { TOP_10_STATION_CODES } from '../lib/importantStations'
 import { DEFAULT_VIEW, restyleBasemap } from '../lib/mapStyle'
 import { STATION_MARKER_ICON } from '../lib/markerIcon'
 import type { ConnectionFeature, FinlandGeoJSON, StationFeature } from '../lib/types'
+
+// At the default zoom, only Finland's 10 biggest cities show a marker (see
+// lib/importantStations.ts); zooming in reveals progressively less prominent stations, ranked
+// by network traffic (`runs`), until every station shows by REVEAL_ZOOM_END. Selected/hovered
+// stations always show regardless of rank.
+const REVEAL_ZOOM_START = DEFAULT_VIEW.zoom
+const REVEAL_ZOOM_END = 8
 
 // MapLibre's worker (maplibre-gl-worker.mjs) imports a sibling chunk (maplibre-gl-shared.mjs)
 // via a relative ES module import. Pulling the worker in as a Vite `?url` import (tried first)
@@ -48,6 +56,11 @@ export default function MapView({ stations, connections, finland, selected, onSe
   const stationsRef = useRef<StationFeature[]>(stations)
   const connectionsRef = useRef<ConnectionFeature[]>(connections)
   const onSelectRef = useRef(onSelect)
+  const zoomRef = useRef(DEFAULT_VIEW.zoom)
+  // code -> importance rank (0 = most important). The top 10 cities are fixed at the front;
+  // the rest are ranked by `runs` (how often a train stops there), a proxy for network
+  // significance -- recomputed whenever the station list changes, not on every render.
+  const rankRef = useRef<Map<string, number>>(new Map())
   const [resetShown, setResetShown] = useState(false)
 
   onSelectRef.current = onSelect
@@ -61,6 +74,10 @@ export default function MapView({ stations, connections, finland, selected, onSe
     const isSel = (d: StationFeature) => sel?.code === d.code
     const isHovered = (d: StationFeature) => hovered?.code === d.code
     const touchesSelected = (d: ConnectionFeature) => sel !== null && (d.from === sel.code || d.to === sel.code)
+
+    const revealT = Math.max(0, Math.min(1, (zoomRef.current - REVEAL_ZOOM_START) / (REVEAL_ZOOM_END - REVEAL_ZOOM_START)))
+    const visibleCount = Math.round(TOP_10_STATION_CODES.length + (rankRef.current.size - TOP_10_STATION_CODES.length) * revealT)
+    const isRevealed = (d: StationFeature) => isSel(d) || isHovered(d) || (rankRef.current.get(d.code) ?? Infinity) < visibleCount
 
     return [
       // Soft glow underneath, same technique as the original prototype's route lines: a wide,
@@ -92,23 +109,38 @@ export default function MapView({ stations, connections, finland, selected, onSe
         getColor: (d) => [...NETWORK_LINE_CORE_COLOR, touchesSelected(d) ? 255 : dim ? 60 : 235],
         updateTriggers: { getColor: [sel], getWidth: [sel] },
       }),
+      // Black outline underneath the coloured pin: the same mask icon, a few pixels larger and
+      // tinted solid black, so it peeks out as a rim around the coloured pin drawn on top --
+      // same glow-under-core trick the route lines use. Not pickable; the coloured pin above
+      // handles hover/click.
+      new IconLayer<StationFeature>({
+        id: 'stations-outline', data: currentStations,
+        getPosition: (d) => [d.lon, d.lat],
+        getIcon: () => STATION_MARKER_ICON,
+        sizeUnits: 'pixels',
+        getSize: (d) => (!isRevealed(d) ? 0 : isSel(d) ? 51 : isHovered(d) ? 45 : 35),
+        getColor: (d) => [10, 10, 12, isSel(d) || isHovered(d) ? 255 : dim ? 130 : 220],
+        updateTriggers: { getSize: [sel, hovered, revealT], getColor: [sel, hovered] },
+      }),
       // Stick-and-ball markers, anchored at the station point and rising above it -- this,
       // combined with the tilted camera, is what gives the map its 3D feel rather than flat
       // dots. Single grayscale icon (see lib/markerIcon.ts), tinted per-station via getColor
-      // (mask: true) with the same delay ramp the dots used.
+      // (mask: true) with the same delay ramp the dots used. Only the top-N most important
+      // stations for the current zoom are shown (isRevealed above) -- at the default view
+      // that's just Finland's 10 biggest cities, growing to every station by REVEAL_ZOOM_END.
       new IconLayer<StationFeature>({
         id: 'stations', data: currentStations, pickable: true,
         getPosition: (d) => [d.lon, d.lat],
         getIcon: () => STATION_MARKER_ICON,
         sizeUnits: 'pixels',
-        getSize: (d) => (isSel(d) ? 46 : isHovered(d) ? 40 : 30),
+        getSize: (d) => (!isRevealed(d) ? 0 : isSel(d) ? 46 : isHovered(d) ? 40 : 30),
         getColor: (d) => delayColor(d.avgDelay, isSel(d) || isHovered(d) ? 255 : dim ? 130 : 220),
         onHover: ({ object }) => {
           hoveredRef.current = (object as StationFeature | undefined) ?? null
           overlayRef.current?.setProps({ layers: buildLayers() })
         },
         onClick: ({ object }) => onSelectRef.current((object as StationFeature | undefined) ?? null),
-        updateTriggers: { getSize: [sel, hovered], getColor: [sel, hovered] },
+        updateTriggers: { getSize: [sel, hovered, revealT], getColor: [sel, hovered] },
       }),
     ]
   }
@@ -123,6 +155,17 @@ export default function MapView({ stations, connections, finland, selected, onSe
     let cancelled = false
     let map: maplibregl.Map | null = null
     let onKeyDown: ((e: KeyboardEvent) => void) | null = null
+    let rafId: number | null = null
+
+    // Coalesces rapid zoom events (many fire per animation frame during a pinch/scroll) into at
+    // most one reveal-cutoff rebuild per frame.
+    function scheduleRebuild() {
+      if (rafId !== null) return
+      rafId = requestAnimationFrame(() => {
+        rafId = null
+        overlayRef.current?.setProps({ layers: buildLayers() })
+      })
+    }
 
     ;(async () => {
       const rawStyle = (await fetch(BASEMAP_STYLE_URL).then((r) => r.json())) as StyleSpecification
@@ -155,6 +198,11 @@ export default function MapView({ stations, connections, finland, selected, onSe
       map.on('zoom', updateResetVisibility)
       map.on('move', updateResetVisibility)
 
+      map.on('zoom', () => {
+        zoomRef.current = map!.getZoom()
+        scheduleRebuild()
+      })
+
       const overlay = new MapboxOverlay({
         interleaved: false, layers: buildLayers(), pickingRadius: 10,
         getTooltip: ({ object }) => {
@@ -186,6 +234,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
     return () => {
       cancelled = true
       if (onKeyDown) document.removeEventListener('keydown', onKeyDown)
+      if (rafId !== null) cancelAnimationFrame(rafId)
       map?.remove()
       mapRef.current = null
       overlayRef.current = null
@@ -194,10 +243,20 @@ export default function MapView({ stations, connections, finland, selected, onSe
   }, [finland])
 
   // Keep deck.gl layers in sync with the station/connection data and the selection lifted to App.
+  // The importance ranking (which stations reveal at which zoom) is recomputed here too, before
+  // the rebuild that reads it: the top 10 cities first (TOP_10_STATION_CODES order), then
+  // everything else by `runs` descending.
   useEffect(() => {
     stationsRef.current = stations
     connectionsRef.current = connections
     selectedRef.current = selected
+    const rank = new Map<string, number>()
+    const rest = stations
+      .filter((s) => !TOP_10_STATION_CODES.includes(s.code))
+      .sort((a, b) => b.runs - a.runs)
+    for (const [i, code] of TOP_10_STATION_CODES.entries()) rank.set(code, i)
+    for (const [i, s] of rest.entries()) rank.set(s.code, TOP_10_STATION_CODES.length + i)
+    rankRef.current = rank
     overlayRef.current?.setProps({ layers: buildLayers() })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stations, connections, selected])
