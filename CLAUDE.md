@@ -69,9 +69,9 @@ colour-blindness), linear interpolation over 0–8 min average delay: `#5eead4` 
 `#f43f5e`. Restored by request after several multi-hue and mono-hue alternatives (emerald→indigo→
 magenta, green→violet→hot-pink, mono magenta) were tried and rejected.
 
-**Route line colour.** Connection lines are light magenta, not the basemap's gold accent (which
-they originally matched, and which the `Gold accent` row above still applies to for country
-labels/borders/motorways/Finland outline): glow `#e879f9`, core `#fbcfe8`.
+**Route line colour.** Connection lines use the same gold accent as the `Gold accent` row above
+(country labels/borders/motorways/Finland outline): glow `#e5c163`, core `#fde4a8`. A light-magenta
+variant was tried and reverted by request.
 
 **Highlighting Finland.** The tiles have no per-country land shapes, so use a Finland outline
 (Natural Earth via `datasets/geo-countries`, ISO `FIN`, 42 polygons incl. Åland, ~112 KB,

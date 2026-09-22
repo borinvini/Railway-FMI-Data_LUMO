@@ -1,10 +1,10 @@
-/** Light magenta used for the network's connection lines' glow. Replaces the original gold
- *  accent (which matched the basemap's country/motorway-label gold) by request. */
-export const NETWORK_LINE_COLOR: [number, number, number] = [0xe8, 0x79, 0xf9]
+/** Gold accent used for the network's connection lines' glow -- same accent as country/motorway
+ *  labels and the Finland outline. See CLAUDE.md "Map style" palette. */
+export const NETWORK_LINE_COLOR: [number, number, number] = [0xe5, 0xc1, 0x63]
 
-/** Paler, hotter magenta for the crisp line core, so it reads as a bright glowing thread
+/** Lighter, hotter gold for the crisp line core, so it reads as a bright glowing thread
  *  against the glow underneath it rather than blending into the same tone. */
-export const NETWORK_LINE_CORE_COLOR: [number, number, number] = [0xfb, 0xcf, 0xe8]
+export const NETWORK_LINE_CORE_COLOR: [number, number, number] = [0xfd, 0xe4, 0xa8]
 
 /** Delay colour ramp: teal (on time) -> amber -> rose (8+ min late), i.e. green/yellow/red. The
  *  original ramp -- restored by request after several multi-hue and mono-hue alternatives.
