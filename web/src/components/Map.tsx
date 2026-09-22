@@ -4,7 +4,7 @@ import * as maplibregl from 'maplibre-gl'
 import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useEffect, useRef, useState } from 'react'
-import { delayColor, NETWORK_LINE_COLOR } from '../lib/colors'
+import { delayColor, NETWORK_LINE_COLOR, NETWORK_LINE_CORE_COLOR } from '../lib/colors'
 import { DEFAULT_VIEW, restyleBasemap } from '../lib/mapStyle'
 import { STATION_MARKER_ICON } from '../lib/markerIcon'
 import type { ConnectionFeature, FinlandGeoJSON, StationFeature } from '../lib/types'
@@ -88,19 +88,27 @@ export default function MapView({ stations, connections, finland, selected, onSe
       // passenger or not, so the curve follows the real rail alignment instead of jumping
       // straight between distant passenger stations).
       new PathLayer<ConnectionFeature>({
+        id: 'connections-outer-glow', data: currentConnections,
+        getPath: (d) => [[d.fromLon, d.fromLat], [d.toLon, d.toLat]],
+        widthUnits: 'pixels', capRounded: true,
+        getWidth: (d) => (touchesSelected(d) ? 12 : 9),
+        getColor: (d) => [...NETWORK_LINE_COLOR, touchesSelected(d) ? 55 : dim ? 6 : 28],
+        updateTriggers: { getColor: [sel], getWidth: [sel] },
+      }),
+      new PathLayer<ConnectionFeature>({
         id: 'connections-glow', data: currentConnections,
         getPath: (d) => [[d.fromLon, d.fromLat], [d.toLon, d.toLat]],
         widthUnits: 'pixels', capRounded: true,
-        getWidth: (d) => (touchesSelected(d) ? 6 : 4),
-        getColor: (d) => [...NETWORK_LINE_COLOR, touchesSelected(d) ? 90 : dim ? 8 : 35],
+        getWidth: (d) => (touchesSelected(d) ? 6 : 5),
+        getColor: (d) => [...NETWORK_LINE_COLOR, touchesSelected(d) ? 140 : dim ? 15 : 75],
         updateTriggers: { getColor: [sel], getWidth: [sel] },
       }),
       new PathLayer<ConnectionFeature>({
         id: 'connections-core', data: currentConnections,
         getPath: (d) => [[d.fromLon, d.fromLat], [d.toLon, d.toLat]],
         widthUnits: 'pixels', capRounded: true,
-        getWidth: (d) => (touchesSelected(d) ? 3 : 2),
-        getColor: (d) => [...NETWORK_LINE_COLOR, touchesSelected(d) ? 255 : dim ? 35 : 160],
+        getWidth: (d) => (touchesSelected(d) ? 3.2 : 2.4),
+        getColor: (d) => [...NETWORK_LINE_CORE_COLOR, touchesSelected(d) ? 255 : dim ? 60 : 235],
         updateTriggers: { getColor: [sel], getWidth: [sel] },
       }),
       // Stick-and-ball markers, anchored at the station point and rising above it -- this,

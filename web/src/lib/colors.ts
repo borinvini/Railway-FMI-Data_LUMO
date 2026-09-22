@@ -1,6 +1,10 @@
-/** Gold accent used for the network's connection lines -- same accent as country/motorway
+/** Gold accent used for the network's connection lines' glow -- same accent as country/motorway
  *  labels and the Finland outline. See CLAUDE.md "Map style" palette. */
 export const NETWORK_LINE_COLOR: [number, number, number] = [0xe5, 0xc1, 0x63]
+
+/** Lighter, hotter gold for the crisp line core, so it reads as a bright glowing thread
+ *  against the glow underneath it rather than blending into the same tone. */
+export const NETWORK_LINE_CORE_COLOR: [number, number, number] = [0xfd, 0xe4, 0xa8]
 
 /** Delay colour ramp: teal (on time) -> amber -> rose (8+ min late). See CLAUDE.md "Map style". */
 const DELAY_STOPS: [number, number, number][] = [
