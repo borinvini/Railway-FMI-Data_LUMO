@@ -14,10 +14,10 @@ type MutableLayer = LayerSpecification & { paint?: Record<string, unknown>; layo
  * See CLAUDE.md "Camera". Do not derive this from fitBounds.
  */
 export const DEFAULT_VIEW = {
-  center: [26.14445887543991, 67.15430550111654] as [number, number],
-  zoom: 4.125923656372987,
-  pitch: 55,
-  bearing: -12,
+  center: [23.563779608292293, 64.04935386451828] as [number, number],
+  zoom: 5.114014212798122,
+  pitch: 37.37740676562257,
+  bearing: -10.40049178404388,
 }
 
 /** Snazzy Maps "Multi Brand Network" palette, hand-converted to hex. See CLAUDE.md "Map style". */
