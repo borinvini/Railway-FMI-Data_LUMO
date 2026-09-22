@@ -64,11 +64,11 @@ decisions; keep colours colour-blind safe and check contrast on dark.
 | UI surface | `rgba(18,18,20,.82)` + 1px `rgba(255,255,255,.08)` border, 10px radius, `backdrop-filter: blur(8px)` |
 | UI text / muted | `#e8e8ea` / `#8b8b92`, weight 300, `system-ui` |
 
-**Delay ramp** (vivid green → violet → hot pink, luminance also changes so it survives
-colour-blindness; picked to sit apart from the gold routes/basemap accent -- an earlier
-teal→amber→rose ramp had its amber stop read as almost the same colour as the gold network, and a
-follow-up emerald→indigo→magenta pass read as too muted), linear interpolation over 0–8 min average
-delay: `#00e676` → `#a855f7` → `#ff2d78`.
+**Delay ramp** (single-hue magenta, orchid pink → fuchsia, by request -- mono-hue rather than a
+hue jump; luminance change carries the severity signal, which also survives colour-blindness.
+Earlier multi-hue passes -- teal→amber→rose, then emerald→indigo→magenta, then green→violet→hot
+pink -- either sat too close to the gold routes/basemap accent or read as an unwanted hue jump),
+linear interpolation over 0–8 min average delay: `#f5d0fe` → `#e879f9` → `#c026d3`.
 
 **Highlighting Finland.** The tiles have no per-country land shapes, so use a Finland outline
 (Natural Earth via `datasets/geo-countries`, ISO `FIN`, 42 polygons incl. Åland, ~112 KB,

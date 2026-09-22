@@ -6,14 +6,14 @@ export const NETWORK_LINE_COLOR: [number, number, number] = [0xe5, 0xc1, 0x63]
  *  against the glow underneath it rather than blending into the same tone. */
 export const NETWORK_LINE_CORE_COLOR: [number, number, number] = [0xfd, 0xe4, 0xa8]
 
-/** Delay colour ramp: vivid green (on time) -> violet -> hot pink (8+ min late). Chosen to sit
- *  apart from the gold routes/basemap accent rather than passing through amber, which read as
- *  nearly the same colour as the gold network; pushed to more saturated stops than an earlier
- *  emerald/indigo/magenta pass, which read as too muted against the map. See CLAUDE.md "Map style". */
+/** Delay colour ramp: a single-hue magenta, orchid pink (on time) -> fuchsia (8+ min late).
+ *  Mono-hue by request -- earlier multi-hue passes (teal/amber/rose, then emerald/indigo/
+ *  magenta, then green/violet/hot-pink) all sat too close to the gold routes/basemap accent or
+ *  read as a hue jump the user didn't want. See CLAUDE.md "Map style". */
 const DELAY_STOPS: [number, number, number][] = [
-  [0x00, 0xe6, 0x76],
-  [0xa8, 0x55, 0xf7],
-  [0xff, 0x2d, 0x78],
+  [0xf5, 0xd0, 0xfe],
+  [0xe8, 0x79, 0xf9],
+  [0xc0, 0x26, 0xd3],
 ]
 
 /** Average delay in minutes -> deck.gl RGBA colour, clamped to the 0-8 min ramp. */
