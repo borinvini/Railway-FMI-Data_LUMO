@@ -23,11 +23,6 @@ maplibregl.setWorkerUrl(`${import.meta.env.BASE_URL}maplibre/maplibre-gl-worker.
 
 const BASEMAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/dark'
 
-// Station pins only appear once the cursor is within this many CSS pixels of them (the
-// selected and hovered stations are always shown regardless) -- keeps ~190 pins from
-// cluttering the map at rest, revealing them as the visitor explores.
-const REVEAL_RADIUS_PX = 80
-
 interface MapProps {
   stations: StationFeature[]
   connections: ConnectionFeature[]
@@ -53,7 +48,6 @@ export default function MapView({ stations, connections, finland, selected, onSe
   const stationsRef = useRef<StationFeature[]>(stations)
   const connectionsRef = useRef<ConnectionFeature[]>(connections)
   const onSelectRef = useRef(onSelect)
-  const mouseScreenRef = useRef<{ x: number; y: number } | null>(null)
   const [resetShown, setResetShown] = useState(false)
 
   onSelectRef.current = onSelect
@@ -67,19 +61,6 @@ export default function MapView({ stations, connections, finland, selected, onSe
     const isSel = (d: StationFeature) => sel?.code === d.code
     const isHovered = (d: StationFeature) => hovered?.code === d.code
     const touchesSelected = (d: ConnectionFeature) => sel !== null && (d.from === sel.code || d.to === sel.code)
-
-    // A pin is visible if it's selected, hovered, or the cursor is within REVEAL_RADIUS_PX of
-    // its on-screen position. Projected fresh here (not cached) so it stays correct as the
-    // camera pans/zooms/rotates between mouse moves, not just when the cursor itself moves.
-    const isNear = (d: StationFeature) => {
-      if (isSel(d) || isHovered(d)) return true
-      const mouse = mouseScreenRef.current
-      if (!mouse || !mapRef.current) return false
-      const p = mapRef.current.project([d.lon, d.lat])
-      const dx = p.x - mouse.x
-      const dy = p.y - mouse.y
-      return dx * dx + dy * dy <= REVEAL_RADIUS_PX * REVEAL_RADIUS_PX
-    }
 
     return [
       // Soft glow underneath, same technique as the original prototype's route lines: a wide,
@@ -120,14 +101,14 @@ export default function MapView({ stations, connections, finland, selected, onSe
         getPosition: (d) => [d.lon, d.lat],
         getIcon: () => STATION_MARKER_ICON,
         sizeUnits: 'pixels',
-        getSize: (d) => (!isNear(d) ? 0 : isSel(d) ? 46 : isHovered(d) ? 40 : 30),
+        getSize: (d) => (isSel(d) ? 46 : isHovered(d) ? 40 : 30),
         getColor: (d) => delayColor(d.avgDelay, isSel(d) || isHovered(d) ? 255 : dim ? 130 : 220),
         onHover: ({ object }) => {
           hoveredRef.current = (object as StationFeature | undefined) ?? null
           overlayRef.current?.setProps({ layers: buildLayers() })
         },
         onClick: ({ object }) => onSelectRef.current((object as StationFeature | undefined) ?? null),
-        updateTriggers: { getSize: [sel, hovered, mouseScreenRef.current], getColor: [sel, hovered] },
+        updateTriggers: { getSize: [sel, hovered], getColor: [sel, hovered] },
       }),
     ]
   }
@@ -142,19 +123,6 @@ export default function MapView({ stations, connections, finland, selected, onSe
     let cancelled = false
     let map: maplibregl.Map | null = null
     let onKeyDown: ((e: KeyboardEvent) => void) | null = null
-    let onPointerMove: ((e: PointerEvent) => void) | null = null
-    let onPointerLeave: (() => void) | null = null
-    let rafId: number | null = null
-
-    // Coalesces rapid events (pointermove fires far more often than a frame) into at most one
-    // layer rebuild per animation frame.
-    function scheduleRebuild() {
-      if (rafId !== null) return
-      rafId = requestAnimationFrame(() => {
-        rafId = null
-        overlayRef.current?.setProps({ layers: buildLayers() })
-      })
-    }
 
     ;(async () => {
       const rawStyle = (await fetch(BASEMAP_STYLE_URL).then((r) => r.json())) as StyleSpecification
@@ -181,26 +149,11 @@ export default function MapView({ stations, connections, finland, selected, onSe
           Math.abs(map.getBearing() - DEFAULT_VIEW.bearing) > 1 ||
           Math.abs(map.getZoom() - DEFAULT_VIEW.zoom) > 0.3
         setResetShown(drifted)
-        // Station screen positions shift on pan/zoom/rotate even without the cursor moving --
-        // keep the proximity reveal accurate, not just refreshed on the next mouse move.
-        scheduleRebuild()
       }
       map.on('rotate', updateResetVisibility)
       map.on('pitch', updateResetVisibility)
       map.on('zoom', updateResetVisibility)
       map.on('move', updateResetVisibility)
-
-      onPointerMove = (e: PointerEvent) => {
-        const rect = containerRef.current!.getBoundingClientRect()
-        mouseScreenRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
-        scheduleRebuild()
-      }
-      onPointerLeave = () => {
-        mouseScreenRef.current = null
-        scheduleRebuild()
-      }
-      containerRef.current.addEventListener('pointermove', onPointerMove)
-      containerRef.current.addEventListener('pointerleave', onPointerLeave)
 
       const overlay = new MapboxOverlay({
         interleaved: false, layers: buildLayers(), pickingRadius: 10,
@@ -233,9 +186,6 @@ export default function MapView({ stations, connections, finland, selected, onSe
     return () => {
       cancelled = true
       if (onKeyDown) document.removeEventListener('keydown', onKeyDown)
-      if (onPointerMove) containerRef.current?.removeEventListener('pointermove', onPointerMove)
-      if (onPointerLeave) containerRef.current?.removeEventListener('pointerleave', onPointerLeave)
-      if (rafId !== null) cancelAnimationFrame(rafId)
       map?.remove()
       mapRef.current = null
       overlayRef.current = null
