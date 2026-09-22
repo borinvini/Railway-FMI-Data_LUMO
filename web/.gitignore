@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Copied from node_modules/maplibre-gl/dist by scripts/copy-maplibre-worker.mjs
+# (predev/prebuild) -- regenerated on install, not checked in.
+public/maplibre/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

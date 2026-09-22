@@ -46,3 +46,10 @@ body,
 .maplibregl-ctrl-group button + button {
   border-top: 1px solid var(--line) !important;
 }
+
+/* The station picker's native <select>: Tailwind classes on the element itself don't reach
+   the browser-rendered option list on most platforms, so set it explicitly here. */
+#station-select option {
+  background: #16161a;
+  color: var(--text);
+}

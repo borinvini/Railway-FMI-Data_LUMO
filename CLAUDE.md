@@ -137,8 +137,9 @@ empty map, ✕ or Esc closes it. Lines are thin, so keep `pickingRadius` ≥ 10 
 Railway-FMI-Data_LUMO/
   CLAUDE.md
   data/raw/        matched_data_flat_2020_01.parquet   (34 MB, git-ignored)
-  data/derived/    stations.json                        (cached Digitraffic fetch, committed)
-  scripts/build_data.py                                 parquet -> web/public/data/*.json
+                   metadata_closest_ems_to_train_stations.csv  station coords + closest EMS, committed
+  data/derived/    stations.json                        (cached/derived station metadata, committed)
+  scripts/build_data.py                                 parquet + CSV -> web/public/data/*.json
   prototype/       index.html data.json finland.geojson  approved map look — plain HTML/JS,
                                                           source of truth for palette/camera/
                                                           interaction; port into React below
@@ -200,17 +201,18 @@ averages shown to visitors. Do not expose the `_offset` variants.
 - **`pyarrow` is broken** in the user's conda env (`ModuleNotFoundError: pyarrow.lib`). Use
   `fastparquet`: `ParquetFile(path).to_pandas(columns=[...])`. Always read only needed
   columns — the file has ~150.
-- **No coordinates in the parquet.** Get them from Digitraffic:
-  `curl -s --compressed -H "Digitraffic-User: OuluUni/Demo" https://rata.digitraffic.fi/api/v1/metadata/stations`
-  The API returns **HTTP 406 unless gzip is accepted** (`--compressed` / `Accept-Encoding:
-  gzip`) and expects a `Digitraffic-User` header. Cache the result in
+- **No coordinates in the parquet.** Get them from
+  `data/raw/metadata_closest_ems_to_train_stations.csv` (columns: `train_lat`, `train_long`,
+  `passengerTraffic`, `train_station_name`, `train_station_short_code`, `closest_ems_station`,
+  `ems_latitude`, `ems_longitude`, `distance_km`) — this also already carries each station's
+  closest FMI EMS station and its distance, so it replaces the `closest_ems` /
+  `closest_ems_distance_km` join too. No network fetch needed. Cache/derive the result into
   `data/derived/stations.json`; never fetch at page-load time.
-- **Double-encoded UTF-8** in both the parquet and the API (the API's "Ahonpää" arrives as
-  "AhonpÃ¤Ã¤"; parquet codes like `KÄP` print as `K�P`). Normalise with
-  `s.encode('latin-1').decode('utf-8')` (guard with try/except) on **both** sides before
-  joining on `stationShortCode`. Without it 30 of 409 stations silently drop off the map;
-  with it, 408 match.
-- **`HMK` has no Digitraffic coordinates** — add a manual override in the build script.
+- **Double-encoded UTF-8 in the parquet** (station codes like `KÄP` print as `K�P`). Normalise
+  with `s.encode('latin-1').decode('utf-8')` (guard with try/except) before joining on
+  `stationShortCode`. Without it 30 of 409 stations silently drop off the map; with it, 408
+  match.
+- **`HMK` has no coordinates in the CSV either** — add a manual override in the build script.
 - `causes` is a **stringified list of dicts**, not JSON; parse with `ast.literal_eval`.
 - **MapLibre worker loading (critical, breaks the map silently in every mode).** MapLibre spawns
   a Web Worker to decode vector tiles, resolved at runtime as a **sibling file next to its own
@@ -273,18 +275,35 @@ averages shown to visitors. Do not expose the `_offset` variants.
 
 ## Data contract (build output → `web/public/data/`)
 
-- `stations.json` — code → `{name, lat, lon, passengerTraffic}`
+- `stations.json` — code → `{name, lat, lon, passengerTraffic}`. This shape
+  (plus delay stats, if useful later) is already produced by
+  `routes_lib.station_summary()` — reuse rather than re-deriving.
 - `routes.geojson` — one `LineString` per OD pair through its typical station sequence;
-  properties: `id`, `from`, `to`, `runs`, `avgDelay`, `onTimePct`, `worstDay`, `trainTypes`
+  properties: `id`, `from`, `to`, `runs`, `avgDelay`, `onTimePct`, `worstDay`, `trainTypes`.
+  "Typical station sequence" (most-common ordered sequence of runs, restricted to
+  `passengerTraffic == True` stops) is already implemented as
+  `routes_lib.typical_passenger_stops()` — reuse it here rather than re-deriving.
 - `route_detail/<OD>.json` — per-leg delay build-up, daily delay series, delay-vs-weather
-  buckets (temperature, snow depth, wind), cause-category breakdown, worst runs
+  buckets (temperature, snow depth, wind), cause-category breakdown, worst runs.
+  Per-station delay along a route (runs/avgDelay/medianDelay/onTimePct scoped to
+  that route's own runs) is already implemented as `routes_lib.station_level_stats()`
+  + `routes_lib.aggregate(..., station_meta=..., events=...)`'s `stops` JSON column
+  (see `data/derived/routes_index.README.md`) — reuse rather than re-deriving.
 - `summary.json` — month-level headline numbers for the landing state
 
 Keep total payload to a few hundred KB; lazy-load `route_detail` on click.
 
 ## Conventions
 
-- `scripts/build_data.py` is the **only** code that reads the parquet. The web app reads
+- `scripts/routes_lib.py` is the **only** module that reads the parquet (fastparquet,
+  mojibake fix, run/route derivation). `scripts/build_data.py`,
+  `scripts/list_routes.py` (read-only CLI to browse all routes — run
+  `python scripts/list_routes.py --help`; writes `data/derived/routes_index.csv`,
+  documented in `data/derived/routes_index.README.md`) and
+  `scripts/list_stations.py` (same, but per-station stats independent of
+  route — `python scripts/list_stations.py --help`; writes
+  `data/derived/station_index.csv`, documented in
+  `data/derived/station_index.README.md`) all go through it; the web app reads
   generated JSON only. Generated JSON is never hand-edited — rerun the script.
 - Idempotent build: same inputs → identical outputs; log row/station/route counts and warn
   on any station without coordinates.

@@ -3,81 +3,89 @@ import { PathLayer, ScatterplotLayer } from '@deck.gl/layers'
 import * as maplibregl from 'maplibre-gl'
 import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec'
 import 'maplibre-gl/dist/maplibre-gl.css'
-// MapLibre resolves its web-worker script as a sibling file next to its own module's URL at
-// runtime. That works unbundled (dev), but in a production bundle the code ends up looking
-// for the worker beside the bundled chunk, where it was never emitted — Vite can't statically
-// see that dynamic URL construction to know to copy it. Importing it with `?url` makes Vite
-// emit the real worker file and give us its correct built (and base-path-aware) URL, which we
-// hand to MapLibre explicitly. Must run before any `maplibregl.Map` is constructed.
-import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
 import { useEffect, useRef, useState } from 'react'
-import { delayColor } from '../lib/colors'
+import { delayColor, NETWORK_LINE_COLOR } from '../lib/colors'
 import { DEFAULT_VIEW, restyleBasemap } from '../lib/mapStyle'
-import type { FinlandGeoJSON, RouteFeature } from '../lib/types'
+import type { ConnectionFeature, FinlandGeoJSON, StationFeature } from '../lib/types'
 
-maplibregl.setWorkerUrl(maplibreWorkerUrl)
+// MapLibre's worker (maplibre-gl-worker.mjs) imports a sibling chunk (maplibre-gl-shared.mjs)
+// via a relative ES module import. Pulling the worker in as a Vite `?url` import (tried first)
+// only emits the single file you import, not files it internally imports -- so the production
+// build silently shipped a worker that 404'd on its own dependency (no console error, style
+// loads, but no tiles ever render). Fix: `scripts/copy-maplibre-worker.mjs` (run via
+// `predev`/`prebuild`, see package.json) copies both files verbatim into public/maplibre/, and
+// we point at them there directly -- untouched by Vite's bundler, so the worker's relative
+// import keeps resolving against its real sibling. `import.meta.env.BASE_URL` respects the
+// `base: './'` config so this still works under a Hostinger subfolder. Must run before any
+// `maplibregl.Map` is constructed.
+maplibregl.setWorkerUrl(`${import.meta.env.BASE_URL}maplibre/maplibre-gl-worker.mjs`)
 
 const BASEMAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/dark'
 
 interface MapProps {
-  routes: RouteFeature[]
+  stations: StationFeature[]
+  connections: ConnectionFeature[]
   finland: FinlandGeoJSON | null
-  selected: RouteFeature | null
-  onSelect: (route: RouteFeature | null) => void
+  selected: StationFeature | null
+  onSelect: (station: StationFeature | null) => void
 }
 
 /**
  * The approved dashboard map, ported from prototype/index.html — see CLAUDE.md "Map style"
- * for the palette, camera and interaction spec this reproduces. MapLibre and deck.gl are
- * plain JS libraries here (no react-map-gl): the Map/overlay instances live in refs and are
- * created once in an effect, then kept in sync with props.
+ * for the palette, camera and interaction spec this reproduces. Camera/basemap/Finland-highlight
+ * logic is unchanged from the prototype; what's pickable is now the station network (dots +
+ * the segments between directly-adjacent stations) rather than whole routes. MapLibre and
+ * deck.gl are plain JS libraries here (no react-map-gl): the Map/overlay instances live in
+ * refs and are created once in an effect, then kept in sync with props.
  */
-export default function MapView({ routes, finland, selected, onSelect }: MapProps) {
+export default function MapView({ stations, connections, finland, selected, onSelect }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const overlayRef = useRef<MapboxOverlay | null>(null)
-  const hoveredRef = useRef<RouteFeature | null>(null)
-  const selectedRef = useRef<RouteFeature | null>(selected)
-  const routesRef = useRef<RouteFeature[]>(routes)
+  const hoveredRef = useRef<StationFeature | null>(null)
+  const selectedRef = useRef<StationFeature | null>(selected)
+  const stationsRef = useRef<StationFeature[]>(stations)
+  const connectionsRef = useRef<ConnectionFeature[]>(connections)
   const onSelectRef = useRef(onSelect)
   const [resetShown, setResetShown] = useState(false)
 
   onSelectRef.current = onSelect
 
   function buildLayers() {
-    const currentRoutes = routesRef.current
-    const dim = selectedRef.current !== null
-    const isSel = (d: RouteFeature) => selectedRef.current?.id === d.id
-    const alpha = (d: RouteFeature, hi: number, lo: number) =>
-      isSel(d) || d === hoveredRef.current ? hi : dim ? lo : hi
+    const currentStations = stationsRef.current
+    const currentConnections = connectionsRef.current
+    const sel = selectedRef.current
+    const hovered = hoveredRef.current
+    const dim = sel !== null
+    const isSel = (d: StationFeature) => sel?.code === d.code
+    const isHovered = (d: StationFeature) => hovered?.code === d.code
+    const touchesSelected = (d: ConnectionFeature) => sel !== null && (d.from === sel.code || d.to === sel.code)
 
     return [
-      new PathLayer<RouteFeature>({
-        id: 'glow', data: currentRoutes, getPath: (d) => d.path, widthUnits: 'pixels',
-        getWidth: (d) => (isSel(d) ? 14 : 9), capRounded: true, jointRounded: true,
-        getColor: (d) => delayColor(d.avgDelay, alpha(d, 55, 8)),
-        updateTriggers: { getColor: [selectedRef.current, hoveredRef.current], getWidth: [selectedRef.current] },
+      new PathLayer<ConnectionFeature>({
+        id: 'connections', data: currentConnections,
+        getPath: (d) => [[d.fromLon, d.fromLat], [d.toLon, d.toLat]],
+        widthUnits: 'pixels', capRounded: true,
+        getWidth: (d) => (touchesSelected(d) ? 2.2 : 1.2),
+        getColor: (d) => [...NETWORK_LINE_COLOR, touchesSelected(d) ? 210 : dim ? 25 : 95],
+        updateTriggers: { getColor: [sel], getWidth: [sel] },
       }),
-      new PathLayer<RouteFeature>({
-        id: 'core', data: currentRoutes, pickable: true, autoHighlight: false,
-        getPath: (d) => d.path, widthUnits: 'pixels', widthMinPixels: 2,
-        getWidth: (d) => (isSel(d) || d === hoveredRef.current ? 4 : 2.4), capRounded: true, jointRounded: true,
-        getColor: (d) => delayColor(d.avgDelay, alpha(d, 255, 55)),
+      new ScatterplotLayer<StationFeature>({
+        id: 'stations', data: currentStations, pickable: true, stroked: true,
+        getPosition: (d) => [d.lon, d.lat], radiusUnits: 'pixels', lineWidthUnits: 'pixels',
+        getRadius: (d) => (isSel(d) ? 7 : isHovered(d) ? 6 : 3.6),
+        getFillColor: (d) => delayColor(d.avgDelay, isSel(d) || isHovered(d) ? 255 : dim ? 130 : 220),
+        getLineColor: (d) => (isSel(d) ? [229, 193, 99, 255] : [0, 0, 0, 0]),
+        getLineWidth: (d) => (isSel(d) ? 2 : 0),
         onHover: ({ object }) => {
-          hoveredRef.current = (object as RouteFeature | undefined) ?? null
+          hoveredRef.current = (object as StationFeature | undefined) ?? null
           overlayRef.current?.setProps({ layers: buildLayers() })
         },
-        onClick: ({ object }) => onSelectRef.current((object as RouteFeature | undefined) ?? null),
+        onClick: ({ object }) => onSelectRef.current((object as StationFeature | undefined) ?? null),
         updateTriggers: {
-          getColor: [selectedRef.current, hoveredRef.current],
-          getWidth: [selectedRef.current, hoveredRef.current],
+          getRadius: [sel, hovered], getFillColor: [sel, hovered],
+          getLineColor: [sel], getLineWidth: [sel],
         },
-      }),
-      new ScatterplotLayer<[number, number]>({
-        id: 'ends',
-        data: currentRoutes.flatMap((r) => [r.path[0], r.path[r.path.length - 1]]),
-        getPosition: (d) => d, radiusUnits: 'pixels', getRadius: 3.2,
-        getFillColor: [240, 240, 245, 200],
       }),
     ]
   }
@@ -123,9 +131,28 @@ export default function MapView({ routes, finland, selected, onSelect }: MapProp
       map.on('pitch', updateResetVisibility)
       map.on('zoom', updateResetVisibility)
 
-      const overlay = new MapboxOverlay({ interleaved: false, layers: buildLayers(), pickingRadius: 10 })
+      const overlay = new MapboxOverlay({
+        interleaved: false, layers: buildLayers(), pickingRadius: 10,
+        getTooltip: ({ object }) => {
+          const station = object as StationFeature | undefined
+          if (!station) return null
+          return {
+            text: `${station.name}\n${station.avgDelay.toFixed(1)} min late on average`,
+            style: {
+              background: 'rgba(18,18,20,.92)', color: '#e8e8ea',
+              border: '1px solid rgba(255,255,255,.1)', borderRadius: '8px',
+              padding: '8px 10px', whiteSpace: 'pre',
+            },
+          }
+        },
+      })
       overlayRef.current = overlay
       map.addControl(overlay as unknown as maplibregl.IControl)
+
+      // Debugging aid per CLAUDE.md gotchas (prototype/index.html does the same):
+      // overlay._deck.pickObject({x, y, radius}) tests picking from the console.
+      ;(window as unknown as { map: maplibregl.Map; overlay: MapboxOverlay }).map = map
+      ;(window as unknown as { map: maplibregl.Map; overlay: MapboxOverlay }).overlay = overlay
 
       map.on('click', () => { if (!hoveredRef.current) onSelectRef.current(null) })
       onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') onSelectRef.current(null) }
@@ -142,13 +169,21 @@ export default function MapView({ routes, finland, selected, onSelect }: MapProp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [finland])
 
-  // Keep deck.gl layers in sync with the routes data and the selection lifted to App.
+  // Keep deck.gl layers in sync with the station/connection data and the selection lifted to App.
   useEffect(() => {
-    routesRef.current = routes
+    stationsRef.current = stations
+    connectionsRef.current = connections
     selectedRef.current = selected
     overlayRef.current?.setProps({ layers: buildLayers() })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routes, selected])
+  }, [stations, connections, selected])
+
+  // Pan to whichever station gets selected, whether that came from a map click or the
+  // dropdown menu (StationSelect only lifts the selection to App; this is the one place
+  // that knows about the map instance, so it owns the fly-to).
+  useEffect(() => {
+    if (selected) mapRef.current?.flyTo({ center: [selected.lon, selected.lat], duration: 600 })
+  }, [selected])
 
   function resetView() {
     mapRef.current?.flyTo({ ...DEFAULT_VIEW, duration: 600 })
