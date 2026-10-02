@@ -78,12 +78,17 @@ export default function MapView({ stations, connections, finland, selected, onSe
     const dim = sel !== null || route !== null
     const isSel = (d: StationFeature) => sel?.code === d.code
     const isRouteEnd = (d: StationFeature) => route !== null && (d.code === route.start || d.code === route.end)
+    // While a route is highlighted, markers appear only for stations on it (until it's cleared).
+    const routeStations = route ? new Set(route.stationCodes) : null
+    const onRoute = (d: StationFeature) => routeStations === null || routeStations.has(d.code)
     const isHovered = (d: StationFeature) => hovered?.code === d.code
     const touchesSelected = (d: ConnectionFeature) => sel !== null && (d.from === sel.code || d.to === sel.code)
 
     const revealT = Math.max(0, Math.min(1, (zoomRef.current - REVEAL_ZOOM_START) / (REVEAL_ZOOM_END - REVEAL_ZOOM_START)))
     const visibleCount = Math.round(TOP_10_STATION_CODES.length + (rankRef.current.size - TOP_10_STATION_CODES.length) * revealT)
-    const isRevealed = (d: StationFeature) => isSel(d) || isHovered(d) || isRouteEnd(d) || (rankRef.current.get(d.code) ?? Infinity) < visibleCount
+    const isRevealed = (d: StationFeature) =>
+      isSel(d) || isRouteEnd(d) ||
+      (onRoute(d) && (isHovered(d) || (rankRef.current.get(d.code) ?? Infinity) < visibleCount))
 
     return [
       // Soft glow underneath, same technique as the original prototype's route lines: a wide,

@@ -58,7 +58,12 @@ export function toHighlight(
   const paths = result.paths.map((codes) =>
     codes.map((c) => coords.get(c)).filter((c): c is [number, number] => c !== undefined),
   )
-  return { paths: paths.filter((p) => p.length >= 2), start, end }
+  return {
+    paths: paths.filter((p) => p.length >= 2),
+    start,
+    end,
+    stationCodes: [...new Set(result.paths.flat())],
+  }
 }
 
 const MIN_DISTANCE_KM = 100

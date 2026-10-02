@@ -56,4 +56,7 @@ export interface RouteHighlight {
   paths: [number, number][][]
   start: string
   end: string
+  /** Codes of every station on any highlighted path -- the only stations whose markers show
+   *  while a route is highlighted. */
+  stationCodes: string[]
 }
