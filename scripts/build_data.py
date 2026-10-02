@@ -7,6 +7,10 @@ connections.json includes non-passenger stations too, as waypoints only --
 they give the lines their real physical curve, but never get a marker and
 never appear in stations.json / the selection menu.
 
+route_patterns.json lists every distinct full stop sequence a train ran in
+the data, with how many runs of each train type followed it. The route finder
+uses it to find direct trains that stop at one station and then another.
+
 finland.geojson is static (Natural Earth-derived) and already correct in
 web/public/data/ -- this script does not touch it.
 
@@ -35,6 +39,7 @@ OUT_DIR = ROOT / "web" / "public" / "data"
 
 STATIONS_JSON = OUT_DIR / "stations.json"
 CONNECTIONS_JSON = OUT_DIR / "connections.json"
+ROUTE_PATTERNS_JSON = OUT_DIR / "route_patterns.json"
 
 
 def _round_or_none(v, digits=2):
@@ -102,6 +107,24 @@ def build_connections_payload(edges, coords_by_code: dict) -> list[dict]:
     return payload
 
 
+def build_route_patterns_payload(runs) -> list[dict]:
+    """One entry per distinct full stop sequence (every station the train stops
+    at, passenger or not, so a drawn path follows the real track), with the
+    number of runs per train type that followed it. Sorted by total runs
+    (busiest first), ties by the stop list, so the output bytes are stable."""
+    payload = []
+    for stops, g in runs.groupby("stopSequence", sort=False):
+        by_type = g["trainType"].value_counts()
+        payload.append(
+            {
+                "stops": list(stops),
+                "runsByType": {t: int(by_type[t]) for t in sorted(by_type.index)},
+            }
+        )
+    payload.sort(key=lambda p: (-sum(p["runsByType"].values()), p["stops"]))
+    return payload
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--parquet", help="Path to a specific parquet file instead of auto-discovery")
@@ -137,12 +160,18 @@ def main() -> int:
     coords_by_code = build_coord_lookup(stations)
     connections_payload = build_connections_payload(edges, coords_by_code)
 
+    route_patterns_payload = build_route_patterns_payload(runs)
+
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     STATIONS_JSON.write_text(
         json.dumps(stations_payload, ensure_ascii=False, indent=None), encoding="utf-8"
     )
     CONNECTIONS_JSON.write_text(
         json.dumps(connections_payload, ensure_ascii=False, indent=None), encoding="utf-8"
+    )
+    ROUTE_PATTERNS_JSON.write_text(
+        json.dumps(route_patterns_payload, ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8",
     )
 
     print(
@@ -152,6 +181,10 @@ def main() -> int:
     print(
         f"wrote {len(connections_payload)} connections -> "
         f"{CONNECTIONS_JSON.relative_to(ROOT)}"
+    )
+    print(
+        f"wrote {len(route_patterns_payload)} route patterns -> "
+        f"{ROUTE_PATTERNS_JSON.relative_to(ROOT)}"
     )
 
     return 0

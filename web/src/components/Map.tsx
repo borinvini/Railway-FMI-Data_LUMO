@@ -8,7 +8,7 @@ import { delayColor, NETWORK_LINE_COLOR, NETWORK_LINE_CORE_COLOR } from '../lib/
 import { TOP_10_STATION_CODES } from '../lib/importantStations'
 import { DEFAULT_VIEW, LEFT_PANEL_FRACTION, restyleBasemap } from '../lib/mapStyle'
 import { STATION_MARKER_ICON, STATION_MARKER_OUTLINE_ICON } from '../lib/markerIcon'
-import type { ConnectionFeature, FinlandGeoJSON, StationFeature } from '../lib/types'
+import type { ConnectionFeature, FinlandGeoJSON, RouteHighlight, StationFeature } from '../lib/types'
 
 // At the default zoom, only Finland's 10 biggest cities show a marker (see
 // lib/importantStations.ts); zooming in reveals progressively less prominent stations, ranked
@@ -37,6 +37,8 @@ interface MapProps {
   finland: FinlandGeoJSON | null
   selected: StationFeature | null
   onSelect: (station: StationFeature | null) => void
+  /** Route finder result to draw on top of the network (and zoom to); null = none. */
+  routeHighlight: RouteHighlight | null
 }
 
 /**
@@ -47,7 +49,7 @@ interface MapProps {
  * deck.gl are plain JS libraries here (no react-map-gl): the Map/overlay instances live in
  * refs and are created once in an effect, then kept in sync with props.
  */
-export default function MapView({ stations, connections, finland, selected, onSelect }: MapProps) {
+export default function MapView({ stations, connections, finland, selected, onSelect, routeHighlight }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const overlayRef = useRef<MapboxOverlay | null>(null)
@@ -55,6 +57,8 @@ export default function MapView({ stations, connections, finland, selected, onSe
   const selectedRef = useRef<StationFeature | null>(selected)
   const stationsRef = useRef<StationFeature[]>(stations)
   const connectionsRef = useRef<ConnectionFeature[]>(connections)
+  const routeRef = useRef<RouteHighlight | null>(routeHighlight)
+  const hadRouteRef = useRef(false)
   const onSelectRef = useRef(onSelect)
   const zoomRef = useRef(DEFAULT_VIEW.zoom)
   // code -> importance rank (0 = most important). The top 10 cities are fixed at the front;
@@ -70,14 +74,16 @@ export default function MapView({ stations, connections, finland, selected, onSe
     const currentConnections = connectionsRef.current
     const sel = selectedRef.current
     const hovered = hoveredRef.current
-    const dim = sel !== null
+    const route = routeRef.current
+    const dim = sel !== null || route !== null
     const isSel = (d: StationFeature) => sel?.code === d.code
+    const isRouteEnd = (d: StationFeature) => route !== null && (d.code === route.start || d.code === route.end)
     const isHovered = (d: StationFeature) => hovered?.code === d.code
     const touchesSelected = (d: ConnectionFeature) => sel !== null && (d.from === sel.code || d.to === sel.code)
 
     const revealT = Math.max(0, Math.min(1, (zoomRef.current - REVEAL_ZOOM_START) / (REVEAL_ZOOM_END - REVEAL_ZOOM_START)))
     const visibleCount = Math.round(TOP_10_STATION_CODES.length + (rankRef.current.size - TOP_10_STATION_CODES.length) * revealT)
-    const isRevealed = (d: StationFeature) => isSel(d) || isHovered(d) || (rankRef.current.get(d.code) ?? Infinity) < visibleCount
+    const isRevealed = (d: StationFeature) => isSel(d) || isHovered(d) || isRouteEnd(d) || (rankRef.current.get(d.code) ?? Infinity) < visibleCount
 
     return [
       // Soft glow underneath, same technique as the original prototype's route lines: a wide,
@@ -91,7 +97,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
         widthUnits: 'pixels', capRounded: true,
         getWidth: (d) => (touchesSelected(d) ? 12 : 9),
         getColor: (d) => [...NETWORK_LINE_COLOR, touchesSelected(d) ? 55 : dim ? 6 : 28],
-        updateTriggers: { getColor: [sel], getWidth: [sel] },
+        updateTriggers: { getColor: [sel, route], getWidth: [sel] },
       }),
       new PathLayer<ConnectionFeature>({
         id: 'connections-glow', data: currentConnections,
@@ -99,7 +105,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
         widthUnits: 'pixels', capRounded: true,
         getWidth: (d) => (touchesSelected(d) ? 6 : 5),
         getColor: (d) => [...NETWORK_LINE_COLOR, touchesSelected(d) ? 140 : dim ? 15 : 75],
-        updateTriggers: { getColor: [sel], getWidth: [sel] },
+        updateTriggers: { getColor: [sel, route], getWidth: [sel] },
       }),
       new PathLayer<ConnectionFeature>({
         id: 'connections-core', data: currentConnections,
@@ -107,7 +113,23 @@ export default function MapView({ stations, connections, finland, selected, onSe
         widthUnits: 'pixels', capRounded: true,
         getWidth: (d) => (touchesSelected(d) ? 3.2 : 2.4),
         getColor: (d) => [...NETWORK_LINE_CORE_COLOR, touchesSelected(d) ? 255 : dim ? 60 : 235],
-        updateTriggers: { getColor: [sel], getWidth: [sel] },
+        updateTriggers: { getColor: [sel, route], getWidth: [sel] },
+      }),
+      // Route finder highlight: a wide ice-blue halo under a bright white core, drawn over the
+      // (dimmed) network so the chosen route(s) read from across a room. Empty when no route.
+      new PathLayer<[number, number][]>({
+        id: 'route-highlight-glow', data: route?.paths ?? [],
+        getPath: (d) => d,
+        widthUnits: 'pixels', capRounded: true, jointRounded: true,
+        getWidth: 16,
+        getColor: [...NETWORK_LINE_COLOR, 110],
+      }),
+      new PathLayer<[number, number][]>({
+        id: 'route-highlight-core', data: route?.paths ?? [],
+        getPath: (d) => d,
+        widthUnits: 'pixels', capRounded: true, jointRounded: true,
+        getWidth: 4.5,
+        getColor: [255, 255, 255, 255],
       }),
       // Black outline underneath the coloured pin: a stroked variant of the same icon (see
       // lib/markerIcon.ts), rendered at the SAME size as the pin above rather than scaled up --
@@ -118,9 +140,9 @@ export default function MapView({ stations, connections, finland, selected, onSe
         getPosition: (d) => [d.lon, d.lat],
         getIcon: () => STATION_MARKER_OUTLINE_ICON,
         sizeUnits: 'pixels',
-        getSize: (d) => (!isRevealed(d) ? 0 : isSel(d) ? 46 : isHovered(d) ? 40 : 30),
-        getColor: (d) => [2, 6, 13, isSel(d) || isHovered(d) ? 255 : dim ? 130 : 220],
-        updateTriggers: { getSize: [sel, hovered, revealT], getColor: [sel, hovered] },
+        getSize: (d) => (!isRevealed(d) ? 0 : isSel(d) || isRouteEnd(d) ? 46 : isHovered(d) ? 40 : 30),
+        getColor: (d) => [2, 6, 13, isSel(d) || isRouteEnd(d) || isHovered(d) ? 255 : dim ? 130 : 220],
+        updateTriggers: { getSize: [sel, hovered, revealT, route], getColor: [sel, hovered, route] },
       }),
       // Stick-and-ball markers, anchored at the station point and rising above it -- this,
       // combined with the tilted camera, is what gives the map its 3D feel rather than flat
@@ -133,8 +155,8 @@ export default function MapView({ stations, connections, finland, selected, onSe
         getPosition: (d) => [d.lon, d.lat],
         getIcon: () => STATION_MARKER_ICON,
         sizeUnits: 'pixels',
-        getSize: (d) => (!isRevealed(d) ? 0 : isSel(d) ? 46 : isHovered(d) ? 40 : 30),
-        getColor: (d) => delayColor(d.avgDelay, isSel(d) || isHovered(d) ? 255 : dim ? 130 : 220),
+        getSize: (d) => (!isRevealed(d) ? 0 : isSel(d) || isRouteEnd(d) ? 46 : isHovered(d) ? 40 : 30),
+        getColor: (d) => delayColor(d.avgDelay, isSel(d) || isRouteEnd(d) || isHovered(d) ? 255 : dim ? 130 : 220),
         onHover: ({ object }) => {
           hoveredRef.current = (object as StationFeature | undefined) ?? null
           // MapLibre's own canvas carries `cursor: grab`, which overrides the cursor deck.gl
@@ -144,7 +166,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
           overlayRef.current?.setProps({ layers: buildLayers() })
         },
         onClick: ({ object }) => onSelectRef.current((object as StationFeature | undefined) ?? null),
-        updateTriggers: { getSize: [sel, hovered, revealT], getColor: [sel, hovered] },
+        updateTriggers: { getSize: [sel, hovered, revealT, route], getColor: [sel, hovered, route] },
       }),
     ]
   }
@@ -270,6 +292,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
     stationsRef.current = stations
     connectionsRef.current = connections
     selectedRef.current = selected
+    routeRef.current = routeHighlight
     const rank = new Map<string, number>()
     const rest = stations
       .filter((s) => !TOP_10_STATION_CODES.includes(s.code))
@@ -279,7 +302,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
     rankRef.current = rank
     overlayRef.current?.setProps({ layers: buildLayers() })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stations, connections, selected])
+  }, [stations, connections, selected, routeHighlight])
 
   // Pan to whichever station gets selected, whether that came from a map click or the
   // dropdown menu (StationSelect only lifts the selection to App; this is the one place
@@ -287,6 +310,26 @@ export default function MapView({ stations, connections, finland, selected, onSe
   useEffect(() => {
     if (selected) mapRef.current?.flyTo({ center: [selected.lon, selected.lat], duration: 600 })
   }, [selected])
+
+  // Zoom to a newly highlighted route (keeping the visitor's current tilt/rotation -- fitBounds
+  // would otherwise reset the bearing to 0); when the route is cleared, return to the default view.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    if (routeHighlight) {
+      const pts = routeHighlight.paths.flat()
+      const lons = pts.map((p) => p[0])
+      const lats = pts.map((p) => p[1])
+      map.fitBounds(
+        [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
+        { padding: { top: 110, bottom: 110, left: 60, right: 80 }, maxZoom: 8, bearing: map.getBearing(), pitch: map.getPitch(), duration: 800 },
+      )
+      hadRouteRef.current = true
+    } else if (hadRouteRef.current) {
+      hadRouteRef.current = false
+      map.flyTo({ ...DEFAULT_VIEW, duration: 600 })
+    }
+  }, [routeHighlight])
 
   function resetView() {
     mapRef.current?.flyTo({ ...DEFAULT_VIEW, duration: 600 })

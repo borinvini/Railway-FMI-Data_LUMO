@@ -306,6 +306,12 @@ averages shown to visitors. Do not expose the `_offset` variants.
   + `routes_lib.aggregate(..., station_meta=..., events=...)`'s `stops` JSON column
   (see `data/derived/routes_index.README.md`) — reuse rather than re-deriving.
 - `summary.json` — month-level headline numbers for the landing state
+- `route_patterns.json` (built, ~38 KB) — one entry per distinct full stop sequence a train ran:
+  `{stops: [station codes, passenger or not], runsByType: {IC: n, S: n, ...}}`. Powers the
+  **route finder** (left-hand "Find a route" card, `lib/routeFinder.ts`): a route is a *direct
+  train* that stops at the start station and later at the end station; every distinct path
+  between them is highlighted (white core + ice halo, rest of the network dimmed) and the card
+  lists trains per type. No transfers. Coordinates come from `connections.json` endpoints.
 
 Keep total payload to a few hundred KB; lazy-load `route_detail` on click.
 

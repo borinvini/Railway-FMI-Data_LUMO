@@ -1,16 +1,21 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import MapView from './components/Map'
 import FinnishFlag from './components/FinnishFlag'
 import Legend from './components/Legend'
+import RouteFinder from './components/RouteFinder'
 import StationPanel from './components/StationPanel'
 import StationSelect from './components/StationSelect'
-import type { ConnectionFeature, FinlandGeoJSON, StationFeature } from './lib/types'
+import { findRoutes, toHighlight } from './lib/routeFinder'
+import type { ConnectionFeature, FinlandGeoJSON, RoutePattern, StationFeature } from './lib/types'
 
 export default function App() {
   const [stations, setStations] = useState<StationFeature[]>([])
   const [connections, setConnections] = useState<ConnectionFeature[]>([])
   const [finland, setFinland] = useState<FinlandGeoJSON | null>(null)
   const [selected, setSelected] = useState<StationFeature | null>(null)
+  const [patterns, setPatterns] = useState<RoutePattern[]>([])
+  const [routeStart, setRouteStart] = useState<StationFeature | null>(null)
+  const [routeEnd, setRouteEnd] = useState<StationFeature | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -18,14 +23,36 @@ export default function App() {
       fetch('data/stations.json').then((r) => r.json() as Promise<StationFeature[]>),
       fetch('data/connections.json').then((r) => r.json() as Promise<ConnectionFeature[]>),
       fetch('data/finland.geojson').then((r) => r.json() as Promise<FinlandGeoJSON>),
-    ]).then(([stationsData, connectionsData, finlandData]) => {
+      fetch('data/route_patterns.json').then((r) => r.json() as Promise<RoutePattern[]>),
+    ]).then(([stationsData, connectionsData, finlandData, patternsData]) => {
       if (cancelled) return
       setStations(stationsData)
       setConnections(connectionsData)
       setFinland(finlandData)
+      setPatterns(patternsData)
     })
     return () => { cancelled = true }
   }, [])
+
+  // code -> [lon, lat] for every station, passenger or not: connection endpoints include the
+  // non-passenger waypoint stations that route paths pass through.
+  const coords = useMemo(() => {
+    const m = new Map<string, [number, number]>()
+    for (const c of connections) {
+      m.set(c.from, [c.fromLon, c.fromLat])
+      m.set(c.to, [c.toLon, c.toLat])
+    }
+    return m
+  }, [connections])
+
+  const routeResult = useMemo(
+    () => (routeStart && routeEnd ? findRoutes(patterns, routeStart.code, routeEnd.code) : null),
+    [patterns, routeStart, routeEnd],
+  )
+  const routeHighlight = useMemo(
+    () => (routeStart && routeEnd && routeResult ? toHighlight(routeResult, routeStart.code, routeEnd.code, coords) : null),
+    [routeResult, routeStart, routeEnd, coords],
+  )
 
   return (
     <div className="relative h-screen w-screen overflow-hidden">
@@ -35,6 +62,7 @@ export default function App() {
         finland={finland}
         selected={selected}
         onSelect={setSelected}
+        routeHighlight={routeHighlight}
       />
 
       <div className="absolute top-5 left-5 flex items-center gap-3.5 rounded-[10px] border border-(--line) bg-(--surface) px-[18px] py-4 backdrop-blur-[8px]">
@@ -46,6 +74,16 @@ export default function App() {
       </div>
 
       <StationSelect stations={stations} selected={selected} onSelect={setSelected} />
+
+      <RouteFinder
+        stations={stations}
+        start={routeStart}
+        end={routeEnd}
+        result={routeResult}
+        onStart={setRouteStart}
+        onEnd={setRouteEnd}
+        onClear={() => { setRouteStart(null); setRouteEnd(null) }}
+      />
 
       <Legend />
 

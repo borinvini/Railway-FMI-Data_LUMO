@@ -41,3 +41,19 @@ export interface ConnectionFeature {
 /** Finland outline data — see CLAUDE.md "Highlighting Finland". */
 export type FinlandFeatureKind = 'land' | 'mask' | 'outline'
 export type FinlandGeoJSON = GeoJSON.FeatureCollection<GeoJSON.Geometry, { kind: FinlandFeatureKind }>
+
+/** One distinct full stop sequence a train ran (see scripts/build_data.py
+ *  `build_route_patterns_payload`): every station it stops at, in order, plus how many runs
+ *  of each train type followed it. */
+export interface RoutePattern {
+  stops: string[]
+  runsByType: Record<string, number>
+}
+
+/** What the route finder highlights on the map: one [lon, lat] path per distinct way trains
+ *  get from the start station to the end station, plus the two end stations. */
+export interface RouteHighlight {
+  paths: [number, number][][]
+  start: string
+  end: string
+}
