@@ -16,6 +16,7 @@
     "@deck.gl/layers": "^9.4.0",
     "@deck.gl/mapbox": "^9.4.0",
     "@tailwindcss/vite": "^4.3.3",
+    "chart.js": "^4.5.1",
     "maplibre-gl": "^6.10.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

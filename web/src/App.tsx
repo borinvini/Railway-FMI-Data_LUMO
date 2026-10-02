@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import MapView from './components/Map'
 import FinnishFlag from './components/FinnishFlag'
 import Legend from './components/Legend'
+import RouteDetails from './components/RouteDetails'
 import RouteFinder from './components/RouteFinder'
 import StationPanel from './components/StationPanel'
 import StationSelect from './components/StationSelect'
 import { findRoutes, pickRandomRoute, toHighlight } from './lib/routeFinder'
-import type { ConnectionFeature, FinlandGeoJSON, RoutePattern, StationFeature } from './lib/types'
+import type { ConnectionFeature, FinlandGeoJSON, RoutePattern, RouteStatsFile, StationFeature } from './lib/types'
 
 export default function App() {
   const [stations, setStations] = useState<StationFeature[]>([])
@@ -16,6 +17,11 @@ export default function App() {
   const [patterns, setPatterns] = useState<RoutePattern[]>([])
   const [routeStart, setRouteStart] = useState<StationFeature | null>(null)
   const [routeEnd, setRouteEnd] = useState<StationFeature | null>(null)
+  // Which highlighted route's details pop-up is open (index into the route result), if any.
+  const [detailIndex, setDetailIndex] = useState<number | null>(null)
+  // route_stats.json is loaded lazily, the first time a route's details are opened.
+  const [routeStats, setRouteStats] = useState<RouteStatsFile | null>(null)
+  const [statsFailed, setStatsFailed] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -33,6 +39,20 @@ export default function App() {
     })
     return () => { cancelled = true }
   }, [])
+
+  // A different pair of stations (or clearing/swapping) means the open details no longer apply.
+  useEffect(() => { setDetailIndex(null) }, [routeStart, routeEnd])
+
+  useEffect(() => {
+    if (detailIndex === null || routeStats) return
+    let cancelled = false
+    setStatsFailed(false)
+    fetch('data/route_stats.json')
+      .then((r) => r.json() as Promise<RouteStatsFile>)
+      .then((data) => { if (!cancelled) setRouteStats(data) })
+      .catch(() => { if (!cancelled) setStatsFailed(true) })
+    return () => { cancelled = true }
+  }, [detailIndex, routeStats])
 
   // code -> [lon, lat] for every station, passenger or not: connection endpoints include the
   // non-passenger waypoint stations that route paths pass through.
@@ -63,6 +83,8 @@ export default function App() {
         selected={selected}
         onSelect={setSelected}
         routeHighlight={routeHighlight}
+        onRouteClick={setDetailIndex}
+        activeRoute={detailIndex}
       />
 
       <div className="absolute top-5 left-5 flex items-center gap-3.5 rounded-[10px] border border-(--line) bg-(--surface) px-[18px] py-4 backdrop-blur-[8px]">
@@ -97,6 +119,20 @@ export default function App() {
       />
 
       <Legend />
+
+      {routeResult && routeStart && routeEnd && detailIndex !== null && (
+        <RouteDetails
+          routes={routeResult.paths}
+          active={Math.min(detailIndex, routeResult.paths.length - 1)}
+          onActive={setDetailIndex}
+          startName={routeStart.name.replace(/ asema$/, '')}
+          endName={routeEnd.name.replace(/ asema$/, '')}
+          stations={stations}
+          stats={routeStats}
+          loadFailed={statsFailed}
+          onClose={() => setDetailIndex(null)}
+        />
+      )}
 
       {selected && <StationPanel station={selected} onClose={() => setSelected(null)} />}
     </div>

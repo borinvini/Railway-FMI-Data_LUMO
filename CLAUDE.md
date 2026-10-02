@@ -314,6 +314,16 @@ averages shown to visitors. Do not expose the `_offset` variants.
   lists trains per type. No transfers. Coordinates come from `connections.json` endpoints. A
   "Random route" button picks a real train (weighted by runs) and two of its passenger stops at
   least 100 km apart, so it always has a direct train.
+- `route_stats.json` (built, ~110 KB, **lazy-loaded** the first time a route is clicked) — one
+  entry per train service (`<from>-<to>-<type>`, the same rows and numbers as
+  `data/derived/routes_index.csv`, built with the same `routes_lib.aggregate` call): headline
+  delay stats plus compact per-stop rows `[code, trains, avgDelay, onTimePct]`. Clicking a
+  highlighted route opens `RouteDetails` (a pop-up in front of the map; tabs switch between the
+  highlighted routes): general stats (weighted across the services on that route), a Chart.js
+  bar chart of the average delay at each stop, an on-time split bar and a table of services.
+  Per-stop rows exist only for each service's *usual* stops, so a less common variation of a
+  route shows fewer stops (the pop-up says so). The saved `avgDelay` is the mean over a train's
+  stops, not the delay at its destination; UI copy says "typically late at stops".
 
 Keep total payload to a few hundred KB; lazy-load `route_detail` on click.
 

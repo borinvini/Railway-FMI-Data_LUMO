@@ -60,3 +60,33 @@ export interface RouteHighlight {
    *  while a route is highlighted. */
   stationCodes: string[]
 }
+
+/** One distinct way trains get from the route's start to its end station: the stops in order,
+ *  how many trains followed it (per train type), and which train services (route_stats.json
+ *  ids, `<from>-<to>-<type>`) they belong to. */
+export interface RoutePath {
+  stops: string[]
+  trains: number
+  byType: Record<string, number>
+  sources: { id: string; trains: number }[]
+}
+
+/** Delay statistics for one train service (origin -> destination x train type), see
+ *  scripts/build_data.py `build_route_stats_payload`. `stops` rows are
+ *  [station code, trains, average minutes late, % on time]. */
+export interface RouteStat {
+  from: string
+  to: string
+  fromName: string
+  toName: string
+  type: string
+  trains: number
+  avg: number | null
+  p90: number | null
+  onTime: number | null
+  minor: number | null
+  major: number | null
+  cancelled: number | null
+  stops: [string, number, number | null, number | null][]
+}
+export type RouteStatsFile = Record<string, RouteStat>

@@ -39,6 +39,10 @@ interface MapProps {
   onSelect: (station: StationFeature | null) => void
   /** Route finder result to draw on top of the network (and zoom to); null = none. */
   routeHighlight: RouteHighlight | null
+  /** A highlighted route line was clicked; `index` matches `routeHighlight.paths`. */
+  onRouteClick: (index: number) => void
+  /** Index of the route whose details pop-up is open (drawn bolder), or null. */
+  activeRoute: number | null
 }
 
 /**
@@ -49,7 +53,7 @@ interface MapProps {
  * deck.gl are plain JS libraries here (no react-map-gl): the Map/overlay instances live in
  * refs and are created once in an effect, then kept in sync with props.
  */
-export default function MapView({ stations, connections, finland, selected, onSelect, routeHighlight }: MapProps) {
+export default function MapView({ stations, connections, finland, selected, onSelect, routeHighlight, onRouteClick, activeRoute }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const overlayRef = useRef<MapboxOverlay | null>(null)
@@ -60,6 +64,9 @@ export default function MapView({ stations, connections, finland, selected, onSe
   const routeRef = useRef<RouteHighlight | null>(routeHighlight)
   const hadRouteRef = useRef(false)
   const onSelectRef = useRef(onSelect)
+  const onRouteClickRef = useRef(onRouteClick)
+  const activeRouteRef = useRef<number | null>(activeRoute)
+  const routeHoverRef = useRef(false)
   const zoomRef = useRef(DEFAULT_VIEW.zoom)
   // code -> importance rank (0 = most important). The top 10 cities are fixed at the front;
   // the rest are ranked by `runs` (how often a train stops there), a proxy for network
@@ -68,6 +75,8 @@ export default function MapView({ stations, connections, finland, selected, onSe
   const [resetShown, setResetShown] = useState(false)
 
   onSelectRef.current = onSelect
+  onRouteClickRef.current = onRouteClick
+  activeRouteRef.current = activeRoute
 
   function buildLayers() {
     const currentStations = stationsRef.current
@@ -75,6 +84,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
     const sel = selectedRef.current
     const hovered = hoveredRef.current
     const route = routeRef.current
+    const activeIdx = activeRouteRef.current
     const dim = sel !== null || route !== null
     const isSel = (d: StationFeature) => sel?.code === d.code
     const isRouteEnd = (d: StationFeature) => route !== null && (d.code === route.start || d.code === route.end)
@@ -89,6 +99,20 @@ export default function MapView({ stations, connections, finland, selected, onSe
     const isRevealed = (d: StationFeature) =>
       isSel(d) || isRouteEnd(d) ||
       (onRoute(d) && (isHovered(d) || (rankRef.current.get(d.code) ?? Infinity) < visibleCount))
+
+    const setCursor = () => {
+      // MapLibre's own canvas carries `cursor: grab`, which overrides the cursor deck.gl sets on
+      // its container -- so set it on the MapLibre canvas directly.
+      const canvas = mapRef.current?.getCanvas()
+      if (canvas) canvas.style.cursor = hoveredRef.current || routeHoverRef.current ? 'pointer' : ''
+    }
+    const routeHover = ({ object }: { object?: unknown }) => {
+      routeHoverRef.current = object !== undefined && object !== null
+      setCursor()
+    }
+    const routeClick = ({ index }: { index: number }) => {
+      if (index >= 0) onRouteClickRef.current(index)
+    }
 
     return [
       // Soft glow underneath, same technique as the original prototype's route lines: a wide,
@@ -122,19 +146,24 @@ export default function MapView({ stations, connections, finland, selected, onSe
       }),
       // Route finder highlight: a wide ice-blue halo under a bright white core, drawn over the
       // (dimmed) network so the chosen route(s) read from across a room. Empty when no route.
+      // Clickable: a click opens that route's details pop-up (the wide halo is the touch target).
       new PathLayer<[number, number][]>({
-        id: 'route-highlight-glow', data: route?.paths ?? [],
+        id: 'route-highlight-glow', data: route?.paths ?? [], pickable: true,
         getPath: (d) => d,
         widthUnits: 'pixels', capRounded: true, jointRounded: true,
-        getWidth: 16,
-        getColor: [...NETWORK_LINE_COLOR, 110],
+        getWidth: (_d, { index }) => (index === activeIdx ? 20 : 16),
+        getColor: (_d, { index }) => [...NETWORK_LINE_COLOR, activeIdx !== null && index !== activeIdx ? 70 : 110],
+        onHover: routeHover, onClick: routeClick,
+        updateTriggers: { getWidth: [activeIdx], getColor: [activeIdx] },
       }),
       new PathLayer<[number, number][]>({
-        id: 'route-highlight-core', data: route?.paths ?? [],
+        id: 'route-highlight-core', data: route?.paths ?? [], pickable: true,
         getPath: (d) => d,
         widthUnits: 'pixels', capRounded: true, jointRounded: true,
-        getWidth: 4.5,
-        getColor: [255, 255, 255, 255],
+        getWidth: (_d, { index }) => (index === activeIdx ? 6.5 : 4.5),
+        getColor: (_d, { index }) => [255, 255, 255, activeIdx !== null && index !== activeIdx ? 170 : 255],
+        onHover: routeHover, onClick: routeClick,
+        updateTriggers: { getWidth: [activeIdx], getColor: [activeIdx] },
       }),
       // Black outline underneath the coloured pin: a stroked variant of the same icon (see
       // lib/markerIcon.ts), rendered at the SAME size as the pin above rather than scaled up --
@@ -164,10 +193,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
         getColor: (d) => delayColor(d.avgDelay, isSel(d) || isRouteEnd(d) || isHovered(d) ? 255 : dim ? 130 : 220),
         onHover: ({ object }) => {
           hoveredRef.current = (object as StationFeature | undefined) ?? null
-          // MapLibre's own canvas carries `cursor: grab`, which overrides the cursor deck.gl
-          // sets on its container -- so set it on the MapLibre canvas directly.
-          const canvas = mapRef.current?.getCanvas()
-          if (canvas) canvas.style.cursor = hoveredRef.current ? 'pointer' : ''
+          setCursor()
           overlayRef.current?.setProps({ layers: buildLayers() })
         },
         onClick: ({ object }) => onSelectRef.current((object as StationFeature | undefined) ?? null),
@@ -252,11 +278,12 @@ export default function MapView({ stations, connections, finland, selected, onSe
 
       const overlay = new MapboxOverlay({
         interleaved: false, layers: buildLayers(), pickingRadius: 10,
-        getTooltip: ({ object }) => {
-          const station = object as StationFeature | undefined
-          if (!station) return null
+        getTooltip: ({ object, layer }) => {
+          if (!object) return null
+          const isRoute = layer?.id.startsWith('route-highlight') ?? false
+          const station = object as StationFeature
           return {
-            text: `${station.name}\n${station.avgDelay.toFixed(1)} min late on average`,
+            text: isRoute ? 'Click for route details' : `${station.name}\n${station.avgDelay.toFixed(1)} min late on average`,
             style: {
               background: 'rgba(6,16,31,.92)', color: '#eaf1f8',
               border: '1px solid rgba(156,195,232,.2)', borderRadius: '8px',
@@ -273,7 +300,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
       ;(window as unknown as { map: maplibregl.Map; overlay: MapboxOverlay }).map = map
       ;(window as unknown as { map: maplibregl.Map; overlay: MapboxOverlay }).overlay = overlay
 
-      map.on('click', () => { if (!hoveredRef.current) onSelectRef.current(null) })
+      map.on('click', () => { if (!hoveredRef.current && !routeHoverRef.current) onSelectRef.current(null) })
       onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') onSelectRef.current(null) }
       document.addEventListener('keydown', onKeyDown)
     })()
@@ -307,7 +334,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
     rankRef.current = rank
     overlayRef.current?.setProps({ layers: buildLayers() })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stations, connections, selected, routeHighlight])
+  }, [stations, connections, selected, routeHighlight, activeRoute])
 
   // Pan to whichever station gets selected, whether that came from a map click or the
   // dropdown menu (StationSelect only lifts the selection to App; this is the one place

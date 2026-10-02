@@ -11,6 +11,11 @@ route_patterns.json lists every distinct full stop sequence a train ran in
 the data, with how many runs of each train type followed it. The route finder
 uses it to find direct trains that stop at one station and then another.
 
+route_stats.json has the delay statistics of every train service (origin ->
+destination x train type, the same rows as data/derived/routes_index.csv) plus
+a compact per-stop delay list. The route details pop-up loads it lazily when a
+highlighted route is clicked.
+
 finland.geojson is static (Natural Earth-derived) and already correct in
 web/public/data/ -- this script does not touch it.
 
@@ -40,6 +45,7 @@ OUT_DIR = ROOT / "web" / "public" / "data"
 STATIONS_JSON = OUT_DIR / "stations.json"
 CONNECTIONS_JSON = OUT_DIR / "connections.json"
 ROUTE_PATTERNS_JSON = OUT_DIR / "route_patterns.json"
+ROUTE_STATS_JSON = OUT_DIR / "route_stats.json"
 
 
 def _round_or_none(v, digits=2):
@@ -125,6 +131,39 @@ def build_route_patterns_payload(runs) -> list[dict]:
     return payload
 
 
+def build_route_stats_payload(routes) -> dict:
+    """id (`<from>-<to>-<trainType>`) -> that service's headline delay stats and a
+    compact per-stop list `[code, trains, avgDelay, onTimePct]` along its typical
+    passenger stops. Same numbers as routes_index.csv (same aggregate() call)."""
+    payload = {}
+    for _, row in routes.sort_values("id").iterrows():
+        stops = [
+            [
+                stop["code"],
+                int(stop["runs"]),
+                _round_or_none(stop["avgDelay"], 2),
+                _round_or_none(stop["onTimePct"], 1),
+            ]
+            for stop in json.loads(row["stops"])
+        ]
+        payload[row["id"]] = {
+            "from": row["from"],
+            "to": row["to"],
+            "fromName": row["fromName"],
+            "toName": row["toName"],
+            "type": row["trainType"],
+            "trains": int(row["runs"]),
+            "avg": _round_or_none(row["avgDelay"], 2),
+            "p90": _round_or_none(row["p90Delay"], 1),
+            "onTime": _round_or_none(row["onTimePct"], 1),
+            "minor": _round_or_none(row["pctMinorDelay"], 1),
+            "major": _round_or_none(row["pctMajorDelay"], 1),
+            "cancelled": _round_or_none(row["cancelledPct"], 1),
+            "stops": stops,
+        }
+    return payload
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--parquet", help="Path to a specific parquet file instead of auto-discovery")
@@ -161,6 +200,10 @@ def main() -> int:
     connections_payload = build_connections_payload(edges, coords_by_code)
 
     route_patterns_payload = build_route_patterns_payload(runs)
+    service_routes = routes_lib.aggregate(
+        runs, by=("from", "to", "trainType"), station_meta=station_meta, events=events
+    )
+    route_stats_payload = build_route_stats_payload(service_routes)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     STATIONS_JSON.write_text(
@@ -168,6 +211,10 @@ def main() -> int:
     )
     CONNECTIONS_JSON.write_text(
         json.dumps(connections_payload, ensure_ascii=False, indent=None), encoding="utf-8"
+    )
+    ROUTE_STATS_JSON.write_text(
+        json.dumps(route_stats_payload, ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8",
     )
     ROUTE_PATTERNS_JSON.write_text(
         json.dumps(route_patterns_payload, ensure_ascii=False, separators=(",", ":")),
@@ -181,6 +228,10 @@ def main() -> int:
     print(
         f"wrote {len(connections_payload)} connections -> "
         f"{CONNECTIONS_JSON.relative_to(ROOT)}"
+    )
+    print(
+        f"wrote {len(route_stats_payload)} route stats -> "
+        f"{ROUTE_STATS_JSON.relative_to(ROOT)}"
     )
     print(
         f"wrote {len(route_patterns_payload)} route patterns -> "
