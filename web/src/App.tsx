@@ -7,7 +7,10 @@ import RouteFinder from './components/RouteFinder'
 import StationPanel from './components/StationPanel'
 import StationSelect from './components/StationSelect'
 import { findRoutes, pickRandomRoute, toHighlight } from './lib/routeFinder'
+import { routeStationValues, type StationValue } from './lib/routeStats'
 import type { ConnectionFeature, FinlandGeoJSON, RoutePattern, RouteStatsFile, StationFeature } from './lib/types'
+
+const NO_VALUES = new Map<string, StationValue>()
 
 export default function App() {
   const [stations, setStations] = useState<StationFeature[]>([])
@@ -43,17 +46,6 @@ export default function App() {
   // A different pair of stations (or clearing/swapping) means the open details no longer apply.
   useEffect(() => { setDetailIndex(null) }, [routeStart, routeEnd])
 
-  useEffect(() => {
-    if (detailIndex === null || routeStats) return
-    let cancelled = false
-    setStatsFailed(false)
-    fetch('data/route_stats.json')
-      .then((r) => r.json() as Promise<RouteStatsFile>)
-      .then((data) => { if (!cancelled) setRouteStats(data) })
-      .catch(() => { if (!cancelled) setStatsFailed(true) })
-    return () => { cancelled = true }
-  }, [detailIndex, routeStats])
-
   // code -> [lon, lat] for every station, passenger or not: connection endpoints include the
   // non-passenger waypoint stations that route paths pass through.
   const coords = useMemo(() => {
@@ -74,6 +66,27 @@ export default function App() {
     [routeResult, routeStart, routeEnd, coords],
   )
 
+  // route_stats.json is loaded lazily, the first time a route appears: the map badges and the
+  // route details pop-up both need it.
+  useEffect(() => {
+    if (routeResult === null || routeStats) return
+    let cancelled = false
+    setStatsFailed(false)
+    fetch('data/route_stats.json')
+      .then((r) => r.json() as Promise<RouteStatsFile>)
+      .then((data) => { if (!cancelled) setRouteStats(data) })
+      .catch(() => { if (!cancelled) setStatsFailed(true) })
+    return () => { cancelled = true }
+  }, [routeResult, routeStats])
+
+  // Typical delay at each station of the highlighted routes, for the map badges (empty until the
+  // statistics have loaded, so badges first show "–" and then fill in).
+  const routeValues = useMemo(() => {
+    if (!routeResult || !routeStats) return NO_VALUES
+    const names = new Map(stations.map((s) => [s.code, s.name.replace(/ asema$/, '')]))
+    return routeStationValues(routeResult.paths, routeStats, names)
+  }, [routeResult, routeStats, stations])
+
   return (
     <div className="relative h-screen w-screen overflow-hidden">
       <MapView
@@ -83,6 +96,7 @@ export default function App() {
         selected={selected}
         onSelect={setSelected}
         routeHighlight={routeHighlight}
+        routeValues={routeValues}
         onRouteClick={setDetailIndex}
         activeRoute={detailIndex}
         onReset={() => { setSelected(null); setRouteStart(null); setRouteEnd(null); setDetailIndex(null) }}
@@ -119,7 +133,7 @@ export default function App() {
         onClear={() => { setRouteStart(null); setRouteEnd(null) }}
       />
 
-      <Legend />
+      <Legend routeMode={routeHighlight !== null} />
 
       {routeResult && routeStart && routeEnd && detailIndex !== null && (
         <RouteDetails

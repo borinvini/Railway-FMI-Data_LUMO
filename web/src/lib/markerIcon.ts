@@ -50,3 +50,21 @@ export const STATION_MARKER_OUTLINE_ICON = {
   anchorY: SIZE,
   mask: true,
 } as const
+
+// Flat round badge used while a route is highlighted (see Map.tsx): one solid white circle,
+// tinted per station (`mask: true`) and drawn twice -- once a little larger as the ring, once as
+// the coloured fill -- with the delay number on top. Anchored at its centre, unlike the pin.
+const BADGE_SIZE = 64
+
+const badgeSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${BADGE_SIZE}" height="${BADGE_SIZE}" viewBox="0 0 ${BADGE_SIZE} ${BADGE_SIZE}">
+  <circle cx="${BADGE_SIZE / 2}" cy="${BADGE_SIZE / 2}" r="${BADGE_SIZE / 2 - 1}" fill="white"/>
+</svg>`
+
+export const ROUTE_BADGE_ICON = {
+  url: `data:image/svg+xml;utf8,${encodeURIComponent(badgeSvg)}`,
+  width: BADGE_SIZE,
+  height: BADGE_SIZE,
+  anchorX: BADGE_SIZE / 2,
+  anchorY: BADGE_SIZE / 2,
+  mask: true,
+} as const

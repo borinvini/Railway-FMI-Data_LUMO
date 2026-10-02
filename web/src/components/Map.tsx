@@ -1,13 +1,14 @@
 import { MapboxOverlay } from '@deck.gl/mapbox'
-import { IconLayer, PathLayer } from '@deck.gl/layers'
+import { IconLayer, PathLayer, TextLayer } from '@deck.gl/layers'
 import * as maplibregl from 'maplibre-gl'
 import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useEffect, useRef, useState } from 'react'
-import { delayColor, NETWORK_LINE_COLOR, NETWORK_LINE_CORE_COLOR } from '../lib/colors'
+import { delayColor, NETWORK_LINE_COLOR, NETWORK_LINE_CORE_COLOR, routeBadgeStep } from '../lib/colors'
 import { TOP_10_STATION_CODES } from '../lib/importantStations'
+import type { StationValue } from '../lib/routeStats'
 import { DEFAULT_VIEW, LEFT_PANEL_FRACTION, restyleBasemap } from '../lib/mapStyle'
-import { STATION_MARKER_ICON, STATION_MARKER_OUTLINE_ICON } from '../lib/markerIcon'
+import { ROUTE_BADGE_ICON, STATION_MARKER_ICON, STATION_MARKER_OUTLINE_ICON } from '../lib/markerIcon'
 import type { ConnectionFeature, FinlandGeoJSON, RouteHighlight, StationFeature } from '../lib/types'
 
 // At the default zoom, only Finland's 10 biggest cities show a marker (see
@@ -16,6 +17,11 @@ import type { ConnectionFeature, FinlandGeoJSON, RouteHighlight, StationFeature 
 // stations always show regardless of rank.
 const REVEAL_ZOOM_START = DEFAULT_VIEW.zoom
 const REVEAL_ZOOM_END = 8
+
+// While a route is highlighted its stations become round badges with the delay inside; a badge is
+// drawn only if it is at least this far (screen pixels) from every badge already kept, so they
+// never overlap -- zooming in makes room for more.
+const MIN_BADGE_GAP_PX = 38
 
 // MapLibre's worker (maplibre-gl-worker.mjs) imports a sibling chunk (maplibre-gl-shared.mjs)
 // via a relative ES module import. Pulling the worker in as a Vite `?url` import (tried first)
@@ -43,6 +49,8 @@ interface MapProps {
   onRouteClick: (index: number) => void
   /** Index of the route whose details pop-up is open (drawn bolder), or null. */
   activeRoute: number | null
+  /** Typical delay (minutes) at each station of the highlighted routes, for the badges. */
+  routeValues: Map<string, StationValue>
   /** The Reset view button was pressed: App clears the station and route selection. */
   onReset: () => void
 }
@@ -55,7 +63,7 @@ interface MapProps {
  * deck.gl are plain JS libraries here (no react-map-gl): the Map/overlay instances live in
  * refs and are created once in an effect, then kept in sync with props.
  */
-export default function MapView({ stations, connections, finland, selected, onSelect, routeHighlight, onRouteClick, activeRoute, onReset }: MapProps) {
+export default function MapView({ stations, connections, finland, selected, onSelect, routeHighlight, routeValues, onRouteClick, activeRoute, onReset }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const overlayRef = useRef<MapboxOverlay | null>(null)
@@ -64,7 +72,9 @@ export default function MapView({ stations, connections, finland, selected, onSe
   const stationsRef = useRef<StationFeature[]>(stations)
   const connectionsRef = useRef<ConnectionFeature[]>(connections)
   const routeRef = useRef<RouteHighlight | null>(routeHighlight)
+  const routeValuesRef = useRef<Map<string, StationValue>>(routeValues)
   const hadRouteRef = useRef(false)
+  const lastRouteClickRef = useRef<number | null>(null)
   const onSelectRef = useRef(onSelect)
   const onRouteClickRef = useRef(onRouteClick)
   const activeRouteRef = useRef<number | null>(activeRoute)
@@ -77,6 +87,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
   const [resetShown, setResetShown] = useState(false)
 
   onSelectRef.current = onSelect
+  routeValuesRef.current = routeValues
   onRouteClickRef.current = onRouteClick
   activeRouteRef.current = activeRoute
 
@@ -90,17 +101,38 @@ export default function MapView({ stations, connections, finland, selected, onSe
     const dim = sel !== null || route !== null
     const isSel = (d: StationFeature) => sel?.code === d.code
     const isRouteEnd = (d: StationFeature) => route !== null && (d.code === route.start || d.code === route.end)
-    // While a route is highlighted, markers appear only for stations on it (until it's cleared).
-    const routeStations = route ? new Set(route.stationCodes) : null
-    const onRoute = (d: StationFeature) => routeStations === null || routeStations.has(d.code)
     const isHovered = (d: StationFeature) => hovered?.code === d.code
     const touchesSelected = (d: ConnectionFeature) => sel !== null && (d.from === sel.code || d.to === sel.code)
 
     const revealT = Math.max(0, Math.min(1, (zoomRef.current - REVEAL_ZOOM_START) / (REVEAL_ZOOM_END - REVEAL_ZOOM_START)))
     const visibleCount = Math.round(TOP_10_STATION_CODES.length + (rankRef.current.size - TOP_10_STATION_CODES.length) * revealT)
+
+    // Route mode: only the highlighted route's stations get a marker, as badges thinned by screen
+    // distance (start and end always kept, then the most important stations first).
+    const badges: StationFeature[] = []
+    const map = mapRef.current
+    if (route && map) {
+      const byCode = new Map(currentStations.map((st) => [st.code, st]))
+      const isEndCode = (code: string) => code === route.start || code === route.end
+      const priority = (st: StationFeature) => (isEndCode(st.code) ? -1 : rankRef.current.get(st.code) ?? 1e9)
+      const candidates = route.stationCodes
+        .flatMap((code) => { const st = byCode.get(code); return st ? [st] : [] })
+        .sort((a, b) => priority(a) - priority(b))
+      const kept: { x: number; y: number }[] = []
+      for (const st of candidates) {
+        const pt = map.project([st.lon, st.lat])
+        if (isEndCode(st.code) || kept.every((k) => Math.hypot(k.x - pt.x, k.y - pt.y) >= MIN_BADGE_GAP_PX)) {
+          kept.push(pt)
+          badges.push(st)
+        }
+      }
+    }
+    const badgeCodes = new Set(badges.map((st) => st.code))
+    // Pins: normally the zoom-reveal rule; in route mode only a selected station that has no badge.
     const isRevealed = (d: StationFeature) =>
-      isSel(d) || isRouteEnd(d) ||
-      (onRoute(d) && (isHovered(d) || (rankRef.current.get(d.code) ?? Infinity) < visibleCount))
+      route
+        ? isSel(d) && !badgeCodes.has(d.code)
+        : isSel(d) || isHovered(d) || (rankRef.current.get(d.code) ?? Infinity) < visibleCount
 
     const setCursor = () => {
       // MapLibre's own canvas carries `cursor: grab`, which overrides the cursor deck.gl sets on
@@ -108,12 +140,31 @@ export default function MapView({ stations, connections, finland, selected, onSe
       const canvas = mapRef.current?.getCanvas()
       if (canvas) canvas.style.cursor = hoveredRef.current || routeHoverRef.current ? 'pointer' : ''
     }
+    const stationHover = ({ object }: { object?: unknown }) => {
+      hoveredRef.current = (object as StationFeature | undefined) ?? null
+      setCursor()
+      overlayRef.current?.setProps({ layers: buildLayers() })
+    }
+    const stationClick = ({ object }: { object?: unknown }) => onSelectRef.current((object as StationFeature | undefined) ?? null)
     const routeHover = ({ object }: { object?: unknown }) => {
       routeHoverRef.current = object !== undefined && object !== null
       setCursor()
     }
-    const routeClick = ({ index }: { index: number }) => {
-      if (index >= 0) onRouteClickRef.current(index)
+    // Routes often share stretches of track, and deck.gl's plain pick only reports the one drawn on
+    // top -- so a click there could never reach the others. Instead collect every route under the
+    // pointer and cycle: each click moves on to the next one after the route opened last time.
+    // (The pop-up's tabs reach any route directly.)
+    const routeClick = ({ index, x, y }: { index: number; x: number; y: number }) => {
+      if (index < 0) return
+      const deck = (overlayRef.current as unknown as { _deck?: { pickMultipleObjects: (o: object) => { index: number }[] } } | null)?._deck
+      const under = deck
+        ? [...new Set(deck.pickMultipleObjects({ x, y, radius: 6, depth: 8, layerIds: ['route-highlight-core', 'route-highlight-glow'] }).map((h) => h.index))].sort((a, b) => a - b)
+        : [index]
+      const candidates = under.length > 0 ? under : [index]
+      const last = lastRouteClickRef.current
+      const next = last === null ? candidates[0] : candidates.find((i) => i > last) ?? candidates[0]
+      lastRouteClickRef.current = next
+      onRouteClickRef.current(next)
     }
 
     return [
@@ -167,6 +218,53 @@ export default function MapView({ stations, connections, finland, selected, onSe
         onHover: routeHover, onClick: routeClick,
         updateTriggers: { getWidth: [activeIdx], getColor: [activeIdx] },
       }),
+      // Route mode badges: a ring (white for start/end, navy otherwise) under a flat coloured
+      // circle, with the typical delay at that stop written on top (colours: see
+      // ROUTE_BADGE_STEPS). Pickable like the pins: hover tooltip, click opens the station pop-up.
+      new IconLayer<StationFeature>({
+        id: 'route-badge-ring', data: badges,
+        // Flat overlay: skip depth testing so the badges never z-fight with the route lines under them.
+        parameters: { depthCompare: 'always' },
+        getPosition: (d) => [d.lon, d.lat],
+        getIcon: () => ROUTE_BADGE_ICON,
+        sizeUnits: 'pixels',
+        getSize: (d) => (d.code === route?.start || d.code === route?.end ? 52 : 40),
+        getColor: (d) => {
+          if (d.code === route?.start || d.code === route?.end) return [255, 255, 255, 255]
+          // Grey ring = the station's usual delay, not a figure for this route's own trains.
+          return routeValuesRef.current.get(d.code)?.own === false ? [133, 151, 171, 255] : [2, 6, 13, 255]
+        },
+        updateTriggers: { getSize: [route], getColor: [route, routeValues] },
+      }),
+      new IconLayer<StationFeature>({
+        id: 'route-badge-fill', data: badges, pickable: true,
+        // Flat overlay: skip depth testing so the badges never z-fight with the route lines under them.
+        parameters: { depthCompare: 'always' },
+        getPosition: (d) => [d.lon, d.lat],
+        getIcon: () => ROUTE_BADGE_ICON,
+        sizeUnits: 'pixels',
+        getSize: (d) => (d.code === route?.start || d.code === route?.end ? 44 : 34),
+        getColor: (d) => [...routeBadgeStep(routeValuesRef.current.get(d.code)?.avg).fill, 255],
+        onHover: stationHover, onClick: stationClick,
+        updateTriggers: { getSize: [route], getColor: [routeValues] },
+      }),
+      new TextLayer<StationFeature>({
+        id: 'route-badge-text', data: badges,
+        // Flat overlay: skip depth testing so the badges never z-fight with the route lines under them.
+        parameters: { depthCompare: 'always' },
+        getPosition: (d) => [d.lon, d.lat],
+        getText: (d) => {
+          const v = routeValuesRef.current.get(d.code)
+          return v === undefined ? '–' : v.avg.toFixed(1)
+        },
+        getSize: (d) => (d.code === route?.start || d.code === route?.end ? 17 : 14),
+        getColor: (d) => [...routeBadgeStep(routeValuesRef.current.get(d.code)?.avg).text, 255],
+        sizeUnits: 'pixels',
+        getTextAnchor: 'middle', getAlignmentBaseline: 'center',
+        fontFamily: 'system-ui, sans-serif', fontWeight: 700,
+        characterSet: '0123456789.–',
+        updateTriggers: { getText: [routeValues], getColor: [routeValues], getSize: [route] },
+      }),
       // Black outline underneath the coloured pin: a stroked variant of the same icon (see
       // lib/markerIcon.ts), rendered at the SAME size as the pin above rather than scaled up --
       // the stroke is baked into the icon's own geometry, so it rings both the outer edge and
@@ -193,12 +291,8 @@ export default function MapView({ stations, connections, finland, selected, onSe
         sizeUnits: 'pixels',
         getSize: (d) => (!isRevealed(d) ? 0 : isSel(d) || isRouteEnd(d) ? 46 : isHovered(d) ? 40 : 30),
         getColor: (d) => delayColor(d.avgDelay, isSel(d) || isRouteEnd(d) || isHovered(d) ? 255 : dim ? 130 : 220),
-        onHover: ({ object }) => {
-          hoveredRef.current = (object as StationFeature | undefined) ?? null
-          setCursor()
-          overlayRef.current?.setProps({ layers: buildLayers() })
-        },
-        onClick: ({ object }) => onSelectRef.current((object as StationFeature | undefined) ?? null),
+        onHover: stationHover,
+        onClick: stationClick,
         updateTriggers: { getSize: [sel, hovered, revealT, route], getColor: [sel, hovered, route] },
       }),
     ]
@@ -277,15 +371,34 @@ export default function MapView({ stations, connections, finland, selected, onSe
         zoomRef.current = map!.getZoom()
         scheduleRebuild()
       })
+      // Badge thinning depends on screen positions, which pan/pitch/rotate change too.
+      map.on('move', () => { if (routeRef.current) scheduleRebuild() })
 
       const overlay = new MapboxOverlay({
         interleaved: false, layers: buildLayers(), pickingRadius: 10,
         getTooltip: ({ object, layer }) => {
           if (!object) return null
-          const isRoute = layer?.id.startsWith('route-highlight') ?? false
-          const station = object as StationFeature
+          const layerId = layer?.id ?? ''
+          // Build the text per layer: on a route line `object` is a path (an array of coordinates),
+          // not a station -- touching `station.avgDelay` there throws, which stops deck.gl's render
+          // loop for good (the camera keeps moving but no new layers ever draw).
+          let text: string
+          if (layerId.startsWith('route-highlight')) {
+            text = 'Click for route details'
+          } else {
+            const station = object as StationFeature
+            if (layerId === 'route-badge-fill') {
+              const v = routeValuesRef.current.get(station.code)
+              const name = station.name.replace(/ asema$/, '')
+              if (v === undefined) text = `${name}\nNo saved figure for this station`
+              else if (v.own) text = `${name}\n${v.avg.toFixed(1)} min late on this route`
+              else text = `${name}\n${v.avg.toFixed(1)} min late (station average:\nno figure for this route's own trains)`
+            } else {
+              text = `${station.name}\n${station.avgDelay.toFixed(1)} min late on average`
+            }
+          }
           return {
-            text: isRoute ? 'Click for route details' : `${station.name}\n${station.avgDelay.toFixed(1)} min late on average`,
+            text,
             style: {
               background: 'rgba(6,16,31,.92)', color: '#eaf1f8',
               border: '1px solid rgba(156,195,232,.2)', borderRadius: '8px',
@@ -336,7 +449,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
     rankRef.current = rank
     overlayRef.current?.setProps({ layers: buildLayers() })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stations, connections, selected, routeHighlight, activeRoute])
+  }, [stations, connections, selected, routeHighlight, activeRoute, routeValues])
 
   // Pan to whichever station gets selected, whether that came from a map click or the
   // dropdown menu (StationSelect only lifts the selection to App; this is the one place
@@ -344,6 +457,9 @@ export default function MapView({ stations, connections, finland, selected, onSe
   useEffect(() => {
     if (selected) mapRef.current?.flyTo({ center: [selected.lon, selected.lat], duration: 600 })
   }, [selected])
+
+  // A new set of highlighted routes starts the click-to-cycle order over.
+  useEffect(() => { lastRouteClickRef.current = null }, [routeHighlight])
 
   // Zoom to a newly highlighted route (keeping the visitor's current tilt/rotation -- fitBounds
   // would otherwise reset the bearing to 0); when the route is cleared, return to the default view.

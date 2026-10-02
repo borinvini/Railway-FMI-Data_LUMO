@@ -168,3 +168,66 @@ export function viaLabel(path: RoutePath, info: Map<string, StationInfo>): strin
   const top = [...pool].sort((a, b) => info.get(b)!.runs - info.get(a)!.runs).slice(0, 2)
   return `via ${interior.filter((c) => top.includes(c)).map((c) => info.get(c)!.name).join(', ')}`
 }
+
+/** A station's typical delay for the map badges. `own` = from this route's own trains; otherwise
+ *  it is the station's usual delay across all long-distance trains that stop there. */
+export interface StationValue {
+  avg: number
+  own: boolean
+}
+
+const stationAverageCache = new WeakMap<RouteStatsFile, Map<string, number>>()
+
+/** Each station's average delay over every saved train service that has a figure for it. */
+function stationAverages(stats: RouteStatsFile): Map<string, number> {
+  const cached = stationAverageCache.get(stats)
+  if (cached) return cached
+  const sums = new Map<string, { sum: number; weight: number }>()
+  for (const service of Object.values(stats)) {
+    for (const [code, trains, avg] of service.stops) {
+      if (avg === null || trains <= 0) continue
+      const entry = sums.get(code) ?? { sum: 0, weight: 0 }
+      entry.sum += avg * trains
+      entry.weight += trains
+      sums.set(code, entry)
+    }
+  }
+  const result = new Map([...sums].map(([code, { sum, weight }]) => [code, sum / weight]))
+  stationAverageCache.set(stats, result)
+  return result
+}
+
+/**
+ * The typical delay at each station of the highlighted routes, for the map badges. A station on
+ * several routes gets one value: the mean of its per-route values weighted by the trains at the
+ * stop (the same weighting the pop-up chart uses). The saved per-stop figures only cover each
+ * service's usual stops, so a less common variation of a route can have stops with no figure for
+ * its own trains; those fall back to the station's usual delay across all trains (`own: false`).
+ */
+export function routeStationValues(
+  paths: RoutePath[],
+  stats: RouteStatsFile,
+  stationNames: Map<string, string>,
+): Map<string, StationValue> {
+  const sums = new Map<string, { sum: number; weight: number }>()
+  const onRoute = new Set<string>()
+  for (const path of paths) {
+    for (const stop of summarizeRoute(path, stats, stationNames).stops) {
+      onRoute.add(stop.code)
+      if (stop.avg === null || stop.trains <= 0) continue
+      const entry = sums.get(stop.code) ?? { sum: 0, weight: 0 }
+      entry.sum += stop.avg * stop.trains
+      entry.weight += stop.trains
+      sums.set(stop.code, entry)
+    }
+  }
+  const values = new Map<string, StationValue>(
+    [...sums].map(([code, { sum, weight }]) => [code, { avg: sum / weight, own: true }]),
+  )
+  const fallback = stationAverages(stats)
+  for (const code of onRoute) {
+    const avg = fallback.get(code)
+    if (!values.has(code) && avg !== undefined) values.set(code, { avg, own: false })
+  }
+  return values
+}

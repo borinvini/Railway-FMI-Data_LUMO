@@ -25,3 +25,35 @@ export function delayColor(avgDelayMin: number, alpha = 255): [number, number, n
   const [r, g, b] = DELAY_STOPS[i].map((v, k) => Math.round(v + (DELAY_STOPS[i + 1][k] - v) * f))
   return [r, g, b, alpha]
 }
+
+type Rgb = [number, number, number]
+
+/** One step of the route-mode badge colour scheme (see Map.tsx): the typical delay at a stop on a
+ *  highlighted route, in three plain ranges instead of the continuous pin gradient. Same
+ *  blue / amber / crimson family as the route pop-up's split bar; the blue is the lighter flag
+ *  blue so it reads on the navy map. */
+export interface BadgeStep {
+  /** Upper bound in minutes (exclusive); the last step has no bound. */
+  below: number
+  label: string
+  fill: Rgb
+  text: Rgb
+}
+
+export const ROUTE_BADGE_STEPS: BadgeStep[] = [
+  { below: 2, label: 'Under 2 min late', fill: [74, 163, 255], text: [6, 16, 31] },
+  { below: 5, label: '2–5 min late', fill: [255, 179, 64], text: [6, 16, 31] },
+  { below: Infinity, label: 'Over 5 min late', fill: [232, 52, 78], text: [255, 255, 255] },
+]
+
+/** Badge for a stop with no saved figure on this route (also used while the figures load). */
+export const ROUTE_BADGE_NO_FIGURE: BadgeStep = {
+  below: NaN, label: 'No figure', fill: [133, 151, 171], text: [6, 16, 31],
+}
+
+export function routeBadgeStep(avgDelayMin: number | null | undefined): BadgeStep {
+  if (avgDelayMin === null || avgDelayMin === undefined) return ROUTE_BADGE_NO_FIGURE
+  return ROUTE_BADGE_STEPS.find((s) => avgDelayMin < s.below) ?? ROUTE_BADGE_STEPS[ROUTE_BADGE_STEPS.length - 1]
+}
+
+export const rgbCss = ([r, g, b]: Rgb) => `rgb(${r}, ${g}, ${b})`

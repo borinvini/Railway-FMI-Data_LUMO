@@ -137,6 +137,26 @@ getting stuck at a confusing angle:
 core alpha. Hover tooltip: "A → B, X min late on average". Click opens the side panel; click
 empty map, ✕ or Esc closes it. Lines are thin, so keep `pickingRadius` ≥ 10 for touch.
 
+**Overlapping highlighted routes.** Routes often share track, and deck.gl's plain pick only reports
+the one drawn on top, so a click there could never reach the others. `routeClick` in `Map.tsx` uses
+`pickMultipleObjects` to collect every route under the pointer and cycles through them (each click
+opens the next route after the one opened last; the pop-up's tabs also reach any route directly).
+
+**Route-mode station badges.** While the route finder highlights route(s), the 3D pins are replaced
+(only the highlighted routes' stations get a marker) by flat round badges with the typical delay at
+that stop written inside: `IconLayer` ring + fill (`ROUTE_BADGE_ICON`) and a `TextLayer`, with
+`depthCompare: 'always'` so they never z-fight with the route lines. Value = the stop's own average
+delay on the highlighted route(s) from `route_stats.json` (via `routeStationValues`; a station on
+several routes gets the trains-weighted mean). The saved per-stop figures only cover each
+service's *usual* stops, so a less common variation of a route (e.g. Oulu → Helsinki via Kajaani)
+can have stops with no figure for its own trains; those fall back to the station's usual delay
+across all trains (`own: false`) and get a grey ring + legend entry ("Grey ring: station's usual
+delay"); only a station with no data anywhere shows "–". Three-step colour scheme (`ROUTE_BADGE_STEPS` in `lib/colors.ts`): under 2 min `#4aa3ff`,
+2–5 min `#ffb340`, over 5 min `#e8344e`, no figure `#8597ab`. Start/end are larger with a white
+ring and always shown; other badges are thinned by screen distance (≥ 38 px apart, most important
+stations first, recomputed on every camera move), so zooming in reveals more. The legend switches to
+these ranges while a route is shown. A selected off-route station keeps its pin.
+
 ## Product decisions (defaults — change only if the user says so)
 
 1. **A "route" = an origin→destination pair** (~145 lines, aggregated over the month). Click
@@ -314,7 +334,7 @@ averages shown to visitors. Do not expose the `_offset` variants.
   lists trains per type. No transfers. Coordinates come from `connections.json` endpoints. A
   "Random route" button picks a real train (weighted by runs) and two of its passenger stops at
   least 100 km apart, so it always has a direct train.
-- `route_stats.json` (built, ~110 KB, **lazy-loaded** the first time a route is clicked) — one
+- `route_stats.json` (built, ~110 KB, **lazy-loaded** the first time a route is highlighted) — one
   entry per train service (`<from>-<to>-<type>`, the same rows and numbers as
   `data/derived/routes_index.csv`, built with the same `routes_lib.aggregate` call): headline
   delay stats plus compact per-stop rows `[code, trains, avgDelay, onTimePct]`. Clicking a
