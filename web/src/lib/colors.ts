@@ -1,19 +1,21 @@
-/** Gold accent used for the network's connection lines' glow -- same accent as country/motorway
+/** Icy-blue accent used for the network's connection lines' glow -- same accent as country/motorway
  *  labels and the Finland outline. See CLAUDE.md "Map style" palette. */
-export const NETWORK_LINE_COLOR: [number, number, number] = [0xe5, 0xc1, 0x63]
+export const NETWORK_LINE_COLOR: [number, number, number] = [0x9c, 0xc3, 0xe8]
 
-/** Lighter, hotter gold for the crisp line core, so it reads as a bright glowing thread
+/** Near-white snow for the crisp line core, so it reads as a bright glowing thread
  *  against the glow underneath it rather than blending into the same tone. */
-export const NETWORK_LINE_CORE_COLOR: [number, number, number] = [0xfd, 0xe4, 0xa8]
+export const NETWORK_LINE_CORE_COLOR: [number, number, number] = [0xea, 0xf3, 0xfc]
 
-/** Delay colour ramp: teal (on time) -> amber -> rose (8+ min late), i.e. green/yellow/red. The
- *  original ramp -- restored by request after several multi-hue and mono-hue alternatives.
- *  See CLAUDE.md "Map style". */
-const DELAY_STOPS: [number, number, number][] = [
-  [0x5e, 0xea, 0xd4],
-  [0xfb, 0xbf, 0x24],
-  [0xf4, 0x3f, 0x5e],
-]
+/** Delay colour ramp: snow white (on time, echoing the flag's white) -> amber -> crimson (8+ min
+ *  late). Lightness falls steadily so it survives colour-blindness. Chosen to fit the Finnish-flag
+ *  "Nordic night" theme. See CLAUDE.md "Map style". */
+export const DELAY_RAMP_HEX = ['#f1f6fb', '#ffb340', '#e8344e'] as const
+
+const DELAY_STOPS: [number, number, number][] = DELAY_RAMP_HEX.map((hex) => [
+  parseInt(hex.slice(1, 3), 16),
+  parseInt(hex.slice(3, 5), 16),
+  parseInt(hex.slice(5, 7), 16),
+])
 
 /** Average delay in minutes -> deck.gl RGBA colour, clamped to the 0-8 min ramp. */
 export function delayColor(avgDelayMin: number, alpha = 255): [number, number, number, number] {

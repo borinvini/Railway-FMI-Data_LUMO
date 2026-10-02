@@ -1,13 +1,15 @@
 @import "tailwindcss";
 
-/* Dark-mode-only palette, approved by the user in prototype/ — see CLAUDE.md "Map style". */
+/* Dark-mode-only "Nordic night" palette derived from the Finnish flag (blue = Pantone 294 C,
+   #002F6C) — see CLAUDE.md "Map style". */
 :root {
-  --bg: #0b0b0c;
-  --surface: rgba(18, 18, 20, 0.82);
-  --line: rgba(255, 255, 255, 0.08);
-  --text: #e8e8ea;
-  --muted: #8b8b92;
-  --gold: #e5c163;
+  --bg: #06101f;
+  --surface: rgba(6, 16, 31, 0.82);
+  --line: rgba(156, 195, 232, 0.14);
+  --text: #eaf1f8;
+  --muted: #8597ab;
+  --ice: #9cc3e8;
+  --flag-blue: #002f6c;
 }
 
 html,
@@ -22,10 +24,10 @@ body,
 
 .maplibregl-ctrl-attrib {
   background: transparent !important;
-  color: #666 !important;
+  color: #55697f !important;
 }
 .maplibregl-ctrl-attrib a {
-  color: #777 !important;
+  color: #62778e !important;
 }
 .deck-tooltip {
   font: 300 13px system-ui, sans-serif !important;
@@ -50,6 +52,6 @@ body,
 /* The station picker's native <select>: Tailwind classes on the element itself don't reach
    the browser-rendered option list on most platforms, so set it explicitly here. */
 #station-select option {
-  background: #16161a;
+  background: #0b1828;
   color: var(--text);
 }

@@ -27,7 +27,7 @@ Design rules that follow from that:
 | Layer | Choice |
 |---|---|
 | Build | **Vite + React + TypeScript + Tailwind CSS**, `base: './'` so it works in any Hostinger subfolder |
-| Basemap | **MapLibre GL JS** (v4) on **OpenFreeMap** vector tiles (free, keyless, OpenMapTiles schema), **restyled in code** to the Snazzy "Multi Brand Network" palette (see *Map style*). Google Maps was considered and rejected: needs an API key + billing, and the key would sit in the page. |
+| Basemap | **MapLibre GL JS** (v4) on **OpenFreeMap** vector tiles (free, keyless, OpenMapTiles schema), **restyled in code** to the Finnish-flag "Nordic night" palette (see *Map style*). Google Maps was considered and rejected: needs an API key + billing, and the key would sit in the page. |
 | Data layers | **deck.gl** (v9) via `MapboxOverlay` (`interleaved: false`, `pickingRadius: 10`): `PathLayer` routes, `ScatterplotLayer` stations, optional `TripsLayer` attract-loop |
 | Panel charts | Chart.js (framework-agnostic; call its API directly inside a `useEffect` — no React-charting library needed) |
 | Data prep | Python 3, `fastparquet` + `pandas` (see gotchas) |
@@ -43,42 +43,47 @@ prototype — create the `maplibregl.Map` and `MapboxOverlay` instances in a `us
 **Approved by the user** (prototype in `prototype/`, served with
 `python -m http.server 8765` from that folder). Reproduce it, do not redesign it.
 
-Dark charcoal basemap with Finland highlighted so the delay colours read from across a room.
+Dark navy basemap with Finland highlighted so the delay colours read from across a room.
 Routes: wide translucent glow under a bright core line. Stations: small white dots. Legend in
 plain words ("on time" → "8+ min late"). Use the `dataviz` skill for colour and chart
 decisions; keep colours colour-blind safe and check contrast on dark.
 
-**Basemap palette** (Snazzy Maps "Multi Brand Network", style 20053, converted from Google
-"lightness" values to hex by hand — approximate on purpose):
+**Basemap palette — "Nordic night"** (derived from the Finnish flag: blue is Pantone 294 C =
+`#002F6C`, white `#FFFFFF`, 18:11 proportions; replaced the earlier Snazzy charcoal/gold look by
+request):
 
 | Role | Value |
 |---|---|
-| Land (rest of world) | `#2e2e2e` |
-| **Finland land** (highlight) | `#3b3b3b` |
-| Water | `#222222` |
-| Gold accent: country labels, borders, Finland outline, motorways | `#e5c163` |
-| City labels | `#c4c4c4` |
-| Other labels / road grey | `#999999` / `#575757` |
-| Label halo | `#000000` (width 1.2) |
-| Outside-Finland dim | black overlay, opacity `0.5` (`outsideDim`; `1.0` hides neighbours) |
-| UI surface | `rgba(18,18,20,.82)` + 1px `rgba(255,255,255,.08)` border, 10px radius, `backdrop-filter: blur(8px)` |
-| UI text / muted | `#e8e8ea` / `#8b8b92`, weight 300, `system-ui` |
+| Land (rest of world) | `#0d1b2e` |
+| **Finland land** (highlight) | `#16304f` |
+| Water | `#040b16` (labels `#3a5070`) |
+| Ice accent: country labels, borders, Finland outline, motorways | `#9cc3e8` |
+| City labels | `#c9d6e3` |
+| Other labels / road / other boundaries | `#7f93a8` / `#2a3d55` / `#1f3048` |
+| Label halo | `#02060d` (width 1.2) |
+| Outside-Finland dim | `#02060d` overlay, opacity `0.5` (`outsideDim`; `1.0` hides neighbours) |
+| UI surface | `rgba(6,16,31,.82)` + 1px `rgba(156,195,232,.14)` border, 10px radius, `backdrop-filter: blur(8px)` |
+| UI text / muted | `#eaf1f8` / `#8597ab`, weight 300, `system-ui` |
 
-**Delay ramp** (teal → amber → rose, i.e. green/yellow/red; luminance also changes so it survives
-colour-blindness), linear interpolation over 0–8 min average delay: `#5eead4` → `#fbbf24` →
-`#f43f5e`. Restored by request after several multi-hue and mono-hue alternatives (emerald→indigo→
-magenta, green→violet→hot-pink, mono magenta) were tried and rejected.
+A small SVG Finnish flag (`components/FinnishFlag.tsx`) sits in the title card.
 
-**Route line colour.** Connection lines use the same gold accent as the `Gold accent` row above
-(country labels/borders/motorways/Finland outline): glow `#e5c163`, core `#fde4a8`. A light-magenta
-variant was tried and reverted by request.
+**Delay ramp** (snow white → amber → crimson; lightness falls steadily so it survives
+colour-blindness), linear interpolation over 0–8 min average delay: `#f1f6fb` → `#ffb340` →
+`#e8344e`. Single source of truth: `DELAY_RAMP_HEX` in `lib/colors.ts` (the legend reads it too).
+Chosen to fit the Finnish-flag "Nordic night" theme; replaces the earlier teal → amber → rose
+(green/yellow/red) ramp. A dark navy outline ring around each pin keeps white pins distinct from
+the ice-white route lines.
+
+**Route line colour.** Connection lines use the same ice accent as the `Ice accent` row above
+(country labels/borders/motorways/Finland outline): glow `#9cc3e8`, core `#eaf3fc`. (Earlier gold
+`#e5c163`/`#fde4a8` and a light-magenta variant were tried and replaced.)
 
 **Highlighting Finland.** The tiles have no per-country land shapes, so use a Finland outline
 (Natural Earth via `datasets/geo-countries`, ISO `FIN`, 42 polygons incl. Åland, ~112 KB,
 outer rings only) shipped as `finland.geojson` with three features: `land` (solid Finland),
 `mask` (world rectangle with Finland as holes), `outline` (lines). Layer order: `land` fill
-directly above `background` (below water so lakes stay dark) → `mask` fill (black, 0.5) as the
-**top** MapLibre layer so it also dims foreign labels → gold `outline` line (0.6 opacity, 1.1 px).
+directly above `background` (below water so lakes stay dark) → `mask` fill (`#02060d`, 0.5) as the
+**top** MapLibre layer so it also dims foreign labels → ice `outline` line (0.6 opacity, 1.1 px).
 
 **Restyle recipe** (fetch `https://tiles.openfreemap.org/styles/dark`, mutate, `setStyle`):
 - Drop nothing structural; **hide** (`visibility: none`) layers whose id starts with:
@@ -86,10 +91,10 @@ directly above `background` (below water so lakes stay dark) → `mask` fill (bl
   `highway_major_casing`, `highway_major_subtle`, `highway_motorway_casing`,
   `highway_motorway_subtle`, `highway_name`, `railway`, `place_other`, `place_suburb`,
   `place_village`. OSM rail lines are hidden so they never compete with our routes.
-- Recolour: `background`, `water`, `waterway`, `water_name` (`#555`),
-  `highway_major_inner` (`#575757`, opacity .35), `highway_motorway_inner` (gold, opacity .28),
-  `boundary_country*` (gold, opacity .35), other `boundary*` (`#444`),
-  `place_country*` labels gold, remaining `place_*` labels `#c4c4c4` (`place_state` `#999`).
+- Recolour: `background`, `water`, `waterway`, `water_name` (`#3a5070`),
+  `highway_major_inner` (`#2a3d55`, opacity .35), `highway_motorway_inner` (ice, opacity .28),
+  `boundary_country*` (ice, opacity .35), other `boundary*` (`#1f3048`),
+  `place_country*` labels ice, remaining `place_*` labels `#c9d6e3` (`place_state` `#7f93a8`).
 - **Ship a snapshot of the restyled style JSON in the repo** rather than fetching and mutating
   at runtime, so the page depends only on tile requests (event wifi).
 

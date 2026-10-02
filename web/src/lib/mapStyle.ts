@@ -20,17 +20,21 @@ export const DEFAULT_VIEW = {
   bearing: -14.062336607182147,
 }
 
-/** Snazzy Maps "Multi Brand Network" palette, hand-converted to hex. See CLAUDE.md "Map style". */
+/** "Nordic night" palette: navy shades derived from the Finnish flag blue (Pantone 294 C,
+ *  #002F6C) with an icy accent. See CLAUDE.md "Map style". */
 const P = {
-  land: '#2e2e2e',
-  finlandLand: '#3b3b3b', // Finland highlighted a step lighter than the rest
-  outsideDim: 0.5, // black overlay strength outside Finland
-  water: '#222222',
-  road: '#575757',
-  gold: '#e5c163', // highways + country labels in the original
-  city: '#c4c4c4', // locality labels in the original
-  label: '#999999',
-  halo: '#000000',
+  land: '#0d1b2e',
+  finlandLand: '#16304f', // Finland highlighted a step lighter than the rest
+  outsideDim: 0.5, // overlay strength outside Finland
+  mask: '#02060d',
+  water: '#040b16',
+  waterLabel: '#3a5070',
+  road: '#2a3d55',
+  boundary: '#1f3048',
+  ice: '#9cc3e8', // highways, country labels/borders, Finland outline
+  city: '#c9d6e3', // locality labels
+  label: '#7f93a8',
+  halo: '#02060d',
 }
 
 // Layers kept (recoloured); everything else is hidden for a minimalist look. OSM rail lines
@@ -42,7 +46,7 @@ const HIDE_PREFIX = [
 ]
 
 /**
- * Restyles the OpenFreeMap "dark" style to the approved Snazzy palette and highlights Finland.
+ * Restyles the OpenFreeMap "dark" style to the Nordic-night palette and highlights Finland.
  * Mutates and returns `style`. See CLAUDE.md "Restyle recipe" / "Highlighting Finland".
  */
 export function restyleBasemap(style: StyleSpecification, finland: FinlandGeoJSON): StyleSpecification {
@@ -61,12 +65,12 @@ export function restyleBasemap(style: StyleSpecification, finland: FinlandGeoJSO
     if (id === 'background') paint['background-color'] = P.land
     else if (id === 'water') paint['fill-color'] = P.water
     else if (id === 'waterway') paint['line-color'] = P.water
-    else if (id === 'water_name') { paint['text-color'] = '#555'; paint['text-halo-color'] = P.halo }
+    else if (id === 'water_name') { paint['text-color'] = P.waterLabel; paint['text-halo-color'] = P.halo }
     else if (id === 'highway_major_inner') { paint['line-color'] = P.road; paint['line-opacity'] = 0.35 }
-    else if (id === 'highway_motorway_inner') { paint['line-color'] = P.gold; paint['line-opacity'] = 0.28 }
-    else if (id.startsWith('boundary_country')) { paint['line-color'] = P.gold; paint['line-opacity'] = 0.35 }
-    else if (id.startsWith('boundary')) paint['line-color'] = '#444'
-    else if (id.startsWith('place_country')) { paint['text-color'] = P.gold; paint['text-halo-color'] = P.halo }
+    else if (id === 'highway_motorway_inner') { paint['line-color'] = P.ice; paint['line-opacity'] = 0.28 }
+    else if (id.startsWith('boundary_country')) { paint['line-color'] = P.ice; paint['line-opacity'] = 0.35 }
+    else if (id.startsWith('boundary')) paint['line-color'] = P.boundary
+    else if (id.startsWith('place_country')) { paint['text-color'] = P.ice; paint['text-halo-color'] = P.halo }
     else if (id.startsWith('place_')) {
       paint['text-color'] = id === 'place_state' ? P.label : P.city
       paint['text-halo-color'] = P.halo
@@ -85,12 +89,12 @@ export function restyleBasemap(style: StyleSpecification, finland: FinlandGeoJSO
     {
       id: 'outside-mask', type: 'fill', source: 'finland',
       filter: ['==', ['get', 'kind'], 'mask'],
-      paint: { 'fill-color': '#000000', 'fill-opacity': P.outsideDim },
+      paint: { 'fill-color': P.mask, 'fill-opacity': P.outsideDim },
     },
     {
       id: 'finland-outline', type: 'line', source: 'finland',
       filter: ['==', ['get', 'kind'], 'outline'],
-      paint: { 'line-color': P.gold, 'line-opacity': 0.6, 'line-width': 1.1 },
+      paint: { 'line-color': P.ice, 'line-opacity': 0.6, 'line-width': 1.1 },
     },
   )
 

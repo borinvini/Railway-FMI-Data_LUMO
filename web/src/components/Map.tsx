@@ -119,7 +119,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
         getIcon: () => STATION_MARKER_OUTLINE_ICON,
         sizeUnits: 'pixels',
         getSize: (d) => (!isRevealed(d) ? 0 : isSel(d) ? 46 : isHovered(d) ? 40 : 30),
-        getColor: (d) => [10, 10, 12, isSel(d) || isHovered(d) ? 255 : dim ? 130 : 220],
+        getColor: (d) => [2, 6, 13, isSel(d) || isHovered(d) ? 255 : dim ? 130 : 220],
         updateTriggers: { getSize: [sel, hovered, revealT], getColor: [sel, hovered] },
       }),
       // Stick-and-ball markers, anchored at the station point and rising above it -- this,
@@ -215,8 +215,8 @@ export default function MapView({ stations, connections, finland, selected, onSe
           return {
             text: `${station.name}\n${station.avgDelay.toFixed(1)} min late on average`,
             style: {
-              background: 'rgba(18,18,20,.92)', color: '#e8e8ea',
-              border: '1px solid rgba(255,255,255,.1)', borderRadius: '8px',
+              background: 'rgba(6,16,31,.92)', color: '#eaf1f8',
+              border: '1px solid rgba(156,195,232,.2)', borderRadius: '8px',
               padding: '8px 10px', whiteSpace: 'pre',
             },
           }
@@ -284,7 +284,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
       <div ref={containerRef} style={{ position: 'absolute', inset: 0 }} />
       <div
         className="pointer-events-none absolute inset-x-0 top-0 h-[40%]"
-        style={{ background: 'linear-gradient(to bottom, var(--bg), rgba(11,11,12,0))' }}
+        style={{ background: 'linear-gradient(to bottom, var(--bg), rgba(6,16,31,0))' }}
       />
       <button
         type="button"

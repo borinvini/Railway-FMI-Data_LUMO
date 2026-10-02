@@ -1,3 +1,5 @@
+import { DELAY_RAMP_HEX } from '../lib/colors'
+
 /** Plain-language delay legend, bottom-left over the map. See CLAUDE.md "Map style". */
 export default function Legend() {
   return (
@@ -5,7 +7,7 @@ export default function Legend() {
       <div className="text-xs text-(--muted)">Average delay at this station</div>
       <div
         className="my-2 h-1.5 rounded-full"
-        style={{ background: 'linear-gradient(90deg, #5eead4, #fbbf24, #f43f5e)' }}
+        style={{ background: `linear-gradient(90deg, ${DELAY_RAMP_HEX.join(', ')})` }}
       />
       <div className="flex justify-between text-xs text-(--muted)">
         <span>on time</span>
