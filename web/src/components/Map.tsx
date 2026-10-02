@@ -6,7 +6,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { useEffect, useRef, useState } from 'react'
 import { delayColor, NETWORK_LINE_COLOR, NETWORK_LINE_CORE_COLOR } from '../lib/colors'
 import { TOP_10_STATION_CODES } from '../lib/importantStations'
-import { DEFAULT_VIEW, restyleBasemap } from '../lib/mapStyle'
+import { DEFAULT_VIEW, LEFT_PANEL_FRACTION, restyleBasemap } from '../lib/mapStyle'
 import { STATION_MARKER_ICON, STATION_MARKER_OUTLINE_ICON } from '../lib/markerIcon'
 import type { ConnectionFeature, FinlandGeoJSON, StationFeature } from '../lib/types'
 
@@ -183,6 +183,17 @@ export default function MapView({ stations, connections, finland, selected, onSe
         attributionControl: { compact: true },
       })
       mapRef.current = map
+
+      // Draw the camera centre in the middle of the area right of the statistics column,
+      // without touching DEFAULT_VIEW. Padding is persistent camera state, so Reset view and
+      // station fly-tos honour it too.
+      const applyPadding = () => {
+        if (!map) return
+        map.setPadding({ left: Math.round(map.getContainer().clientWidth * LEFT_PANEL_FRACTION), top: 0, right: 0, bottom: 0 })
+      }
+      applyPadding()
+      map.on('resize', applyPadding)
+
       map.on('error', (e: maplibregl.ErrorEvent & { sourceId?: string }) =>
         console.error('MAPERR', e.error?.message, e.sourceId ?? ''),
       )

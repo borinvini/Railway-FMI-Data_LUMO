@@ -20,6 +20,11 @@ export const DEFAULT_VIEW = {
   bearing: -14.062336607182147,
 }
 
+/** Share of the screen width kept free on the left for the statistics column. Applied as map
+ *  camera padding, so DEFAULT_VIEW's numbers stay untouched and Finland lands in the same
+ *  relative spot (centre at ~68% of the width) on any window size. */
+export const LEFT_PANEL_FRACTION = 0.36
+
 /** "Nordic night" palette: navy shades derived from the Finnish flag blue (Pantone 294 C,
  *  #002F6C) with an icy accent. See CLAUDE.md "Map style". */
 const P = {

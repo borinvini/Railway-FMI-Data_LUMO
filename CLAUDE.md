@@ -110,6 +110,12 @@ const DEFAULT_VIEW = {
 };
 ```
 
+Finland is drawn offset to the right (centre at ~68% of the width) to leave the left side free
+for a statistics column: `map.setPadding({ left: LEFT_PANEL_FRACTION × width })` (0.36, in
+`lib/mapStyle.ts`) right after construction and on `resize`. The `DEFAULT_VIEW` numbers are
+unchanged — use padding, not a shifted `center`, so it stays window-size independent and Reset
+view / station fly-tos honour it automatically.
+
 Set directly on the `Map` constructor (`...DEFAULT_VIEW`) — do **not** derive the default via
 `fitBounds`/padding; that was tried first and recomputes slightly per viewport, so it can't
 reproduce an exact saved camera. `minZoom 3.5`, `maxZoom 9`, `maxPitch 70`. Do **not** use
