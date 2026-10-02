@@ -202,10 +202,15 @@ export default function MapView({ stations, connections, finland, selected, onSe
 
       function updateResetVisibility() {
         if (!map) return
+        // Panning counts too: compare where the default centre would be drawn with where the
+        // camera centre is drawn (> 40 px apart), so moving to another place shows the button.
+        const home = map.project(DEFAULT_VIEW.center)
+        const here = map.project(map.getCenter())
         const drifted =
           Math.abs(map.getPitch() - DEFAULT_VIEW.pitch) > 1 ||
           Math.abs(map.getBearing() - DEFAULT_VIEW.bearing) > 1 ||
-          Math.abs(map.getZoom() - DEFAULT_VIEW.zoom) > 0.3
+          Math.abs(map.getZoom() - DEFAULT_VIEW.zoom) > 0.3 ||
+          Math.hypot(home.x - here.x, home.y - here.y) > 40
         setResetShown(drifted)
       }
       map.on('rotate', updateResetVisibility)

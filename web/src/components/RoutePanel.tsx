@@ -13,7 +13,7 @@ export default function RoutePanel({ route, onClose }: RoutePanelProps) {
   const label = (s: string) => s.replace(/ asema$/, '')
 
   return (
-    <div className="absolute top-5 right-5 w-[290px] rounded-[10px] border border-(--line) bg-(--surface) px-[18px] py-4 backdrop-blur-[8px]">
+    <div className="absolute top-5 right-5 z-50 w-[290px] rounded-[10px] border border-(--line) bg-(--surface) px-[18px] py-4 backdrop-blur-[8px]">
       <button
         type="button"
         onClick={onClose}
