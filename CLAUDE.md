@@ -176,9 +176,8 @@ Railway-FMI-Data_LUMO/
   dist/                                                 build output -> upload to Hostinger
 ```
 
-Note: the parquet still sits at the project root; move it to `data/raw/` and write
-`scripts/build_data.py` next — `web/public/data/*` is currently a straight copy of
-`prototype/`'s hand-built sample, not yet produced by a build script.
+Note: the parquet lives in `data/raw/` (git-ignored); the scripts look there first via
+`routes_lib.find_parquets()`.
 
 **Before deploying `dist/` to Hostinger, open it in an ordinary desktop browser** (not just
 via automation tooling) and confirm the map renders — see the MapLibre worker gotcha below;

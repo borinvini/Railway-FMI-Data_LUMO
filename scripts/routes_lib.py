@@ -45,8 +45,8 @@ def find_parquets(explicit: str | None = None) -> list[Path]:
     """Locate the source parquet file(s).
 
     If `explicit` is given, use exactly that path. Otherwise prefer
-    `data/raw/*.parquet` (where CLAUDE.md says the file should live), falling
-    back to `*.parquet` at the project root (where it currently sits).
+    `data/raw/*.parquet` (where the file lives), falling back to `*.parquet`
+    at the project root.
     """
     if explicit:
         p = Path(explicit)
