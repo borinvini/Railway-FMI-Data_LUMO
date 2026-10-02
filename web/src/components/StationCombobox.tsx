@@ -11,6 +11,8 @@ interface StationComboboxProps {
   onChange: (station: StationFeature) => void
   /** A station to leave out of the list (e.g. the route's start in the "To" picker). */
   excludeCode?: string
+  /** Optional control shown at the right end of the label row (e.g. the route finder's swap button). */
+  labelAction?: React.ReactNode
 }
 
 export const stationLabel = (s: string) => s.replace(/ asema$/, '')
@@ -24,7 +26,7 @@ const normalize = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, 
  * "Jump to a station" box and the route finder's From/To pickers.
  */
 export default function StationCombobox({
-  id, label, placeholder = 'Select or type a station…', stations, value, onChange, excludeCode,
+  id, label, placeholder = 'Select or type a station…', stations, value, onChange, excludeCode, labelAction,
 }: StationComboboxProps) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
@@ -80,9 +82,12 @@ export default function StationCombobox({
 
   return (
     <div>
-      <label htmlFor={id} className="mb-1 block text-[13px] font-normal text-[#243f5e]">
-        {label}
-      </label>
+      <div className="mb-1 flex items-center justify-between">
+        <label htmlFor={id} className="text-[13px] font-normal text-[#243f5e]">
+          {label}
+        </label>
+        {labelAction}
+      </div>
       <div className="relative">
         <input
           ref={inputRef}

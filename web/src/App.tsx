@@ -82,6 +82,7 @@ export default function App() {
         result={routeResult}
         onStart={setRouteStart}
         onEnd={setRouteEnd}
+        onSwap={() => { setRouteStart(routeEnd); setRouteEnd(routeStart) }}
         onClear={() => { setRouteStart(null); setRouteEnd(null) }}
       />
 

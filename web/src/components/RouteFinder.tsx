@@ -1,6 +1,6 @@
 import type { RouteResult } from '../lib/routeFinder'
 import type { StationFeature } from '../lib/types'
-import StationCombobox from './StationCombobox'
+import StationCombobox, { stationLabel } from './StationCombobox'
 
 interface RouteFinderProps {
   stations: StationFeature[]
@@ -10,6 +10,7 @@ interface RouteFinderProps {
   result: RouteResult | null
   onStart: (station: StationFeature) => void
   onEnd: (station: StationFeature) => void
+  onSwap: () => void
   onClear: () => void
 }
 
@@ -18,7 +19,7 @@ interface RouteFinderProps {
  * route between them (Map.tsx draws it from the `routeHighlight` App derives from `result`).
  * Direct trains only -- a train that stops at the start station and later at the end station.
  */
-export default function RouteFinder({ stations, start, end, result, onStart, onEnd, onClear }: RouteFinderProps) {
+export default function RouteFinder({ stations, start, end, result, onStart, onEnd, onSwap, onClear }: RouteFinderProps) {
   const both = start !== null && end !== null
 
   return (
@@ -39,7 +40,26 @@ export default function RouteFinder({ stations, start, end, result, onStart, onE
 
       <div className="flex flex-col gap-2">
         <StationCombobox id="route-from" label="From" placeholder="Start station…" stations={stations} value={start} onChange={onStart} excludeCode={end?.code} />
-        <StationCombobox id="route-to" label="To" placeholder="End station…" stations={stations} value={end} onChange={onEnd} excludeCode={start?.code} />
+        <StationCombobox
+          id="route-to" label="To" placeholder="End station…" stations={stations} value={end} onChange={onEnd} excludeCode={start?.code}
+          labelAction={
+            // Trains are counted per direction (they must stop at "From" first), so this flips
+            // the pair to see the opposite direction's trains.
+            <button
+              type="button"
+              onClick={onSwap}
+              disabled={!start && !end}
+              aria-label="Swap direction"
+              title="Swap direction"
+              className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md border border-[rgba(0,47,108,0.2)] text-[#243f5e] hover:bg-[rgba(0,47,108,0.1)] disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
+                <path d="M7 4v16" /><path d="M3 8l4-4 4 4" />
+                <path d="M17 20V4" /><path d="M13 16l4 4 4-4" />
+              </svg>
+            </button>
+          }
+        />
       </div>
 
       <div className="mt-2.5 border-t border-[rgba(0,47,108,0.12)] pt-2 text-[13px] text-[#243f5e]">
@@ -55,7 +75,9 @@ export default function RouteFinder({ stations, start, end, result, onStart, onE
                 </li>
               ))}
             </ul>
-            <div className="mt-1 text-xs text-[#3f5873]">Direct trains only</div>
+            <div className="mt-1 text-xs text-[#3f5873]">
+              Direct trains running from {stationLabel(start!.name)} to {stationLabel(end!.name)}
+            </div>
           </>
         )}
       </div>
