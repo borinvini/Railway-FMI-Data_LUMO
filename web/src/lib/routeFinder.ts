@@ -60,3 +60,55 @@ export function toHighlight(
   )
   return { paths: paths.filter((p) => p.length >= 2), start, end }
 }
+
+const MIN_DISTANCE_KM = 100
+
+function distanceKm(a: { lat: number; lon: number }, b: { lat: number; lon: number }): number {
+  const rad = Math.PI / 180
+  const dLat = (b.lat - a.lat) * rad
+  const dLon = (b.lon - a.lon) * rad
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLon / 2) ** 2
+  return 2 * 6371 * Math.asin(Math.sqrt(h))
+}
+
+/**
+ * A random pair of passenger stations that a real train connects: pick a train pattern
+ * (weighted by how many runs followed it, so common services come up more often), then two of
+ * its passenger stops (start before end) at least MIN_DISTANCE_KM apart as the crow flies, so
+ * the route is worth looking at -- "3 stops apart" was tried first but is only a few km in the
+ * dense Helsinki area. The pair always has a direct train, so the finder never answers "no
+ * direct train" for it. Tries a few times to avoid repeating `avoid` (the pair currently
+ * shown). `stations` maps every passenger station code to its coordinates. Null only if no
+ * train in the data covers that distance.
+ */
+export function pickRandomRoute(
+  patterns: RoutePattern[],
+  stations: Map<string, { lat: number; lon: number }>,
+  avoid?: { start: string; end: string } | null,
+): { start: string; end: string } | null {
+  const candidates = patterns
+    .map((p) => ({
+      stops: p.stops.filter((c) => stations.has(c)),
+      runs: Object.values(p.runsByType).reduce((a, b) => a + b, 0),
+    }))
+    .filter((c) => c.stops.length >= 2)
+  const totalRuns = candidates.reduce((sum, c) => sum + c.runs, 0)
+  if (totalRuns === 0) return null
+
+  for (let attempt = 0; attempt < 30; attempt++) {
+    let r = Math.random() * totalRuns
+    const chosen = candidates.find((c) => (r -= c.runs) < 0) ?? candidates[candidates.length - 1]
+    const pairs: { start: string; end: string }[] = []
+    for (let i = 0; i < chosen.stops.length; i++) {
+      for (let j = i + 1; j < chosen.stops.length; j++) {
+        const start = chosen.stops[i]
+        const end = chosen.stops[j]
+        if (distanceKm(stations.get(start)!, stations.get(end)!) < MIN_DISTANCE_KM) continue
+        if (avoid && start === avoid.start && end === avoid.end) continue
+        pairs.push({ start, end })
+      }
+    }
+    if (pairs.length) return pairs[Math.floor(Math.random() * pairs.length)]
+  }
+  return null
+}

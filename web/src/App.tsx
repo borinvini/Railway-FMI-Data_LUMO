@@ -5,7 +5,7 @@ import Legend from './components/Legend'
 import RouteFinder from './components/RouteFinder'
 import StationPanel from './components/StationPanel'
 import StationSelect from './components/StationSelect'
-import { findRoutes, toHighlight } from './lib/routeFinder'
+import { findRoutes, pickRandomRoute, toHighlight } from './lib/routeFinder'
 import type { ConnectionFeature, FinlandGeoJSON, RoutePattern, StationFeature } from './lib/types'
 
 export default function App() {
@@ -83,6 +83,16 @@ export default function App() {
         onStart={setRouteStart}
         onEnd={setRouteEnd}
         onSwap={() => { setRouteStart(routeEnd); setRouteEnd(routeStart) }}
+        onRandom={() => {
+          const pick = pickRandomRoute(
+            patterns,
+            new Map(stations.map((s) => [s.code, { lat: s.lat, lon: s.lon }])),
+            routeStart && routeEnd ? { start: routeStart.code, end: routeEnd.code } : null,
+          )
+          if (!pick) return
+          setRouteStart(stations.find((s) => s.code === pick.start) ?? null)
+          setRouteEnd(stations.find((s) => s.code === pick.end) ?? null)
+        }}
         onClear={() => { setRouteStart(null); setRouteEnd(null) }}
       />
 

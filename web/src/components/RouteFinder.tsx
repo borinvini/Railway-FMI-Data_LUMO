@@ -11,6 +11,7 @@ interface RouteFinderProps {
   onStart: (station: StationFeature) => void
   onEnd: (station: StationFeature) => void
   onSwap: () => void
+  onRandom: () => void
   onClear: () => void
 }
 
@@ -19,7 +20,7 @@ interface RouteFinderProps {
  * route between them (Map.tsx draws it from the `routeHighlight` App derives from `result`).
  * Direct trains only -- a train that stops at the start station and later at the end station.
  */
-export default function RouteFinder({ stations, start, end, result, onStart, onEnd, onSwap, onClear }: RouteFinderProps) {
+export default function RouteFinder({ stations, start, end, result, onStart, onEnd, onSwap, onRandom, onClear }: RouteFinderProps) {
   const both = start !== null && end !== null
 
   return (
@@ -61,6 +62,20 @@ export default function RouteFinder({ stations, start, end, result, onStart, onE
           }
         />
       </div>
+
+      <button
+        type="button"
+        onClick={onRandom}
+        className="mt-2.5 flex w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-[rgba(0,47,108,0.2)] px-2 py-1.5 text-[13px] text-[#243f5e] hover:bg-[rgba(0,47,108,0.1)]"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+          <rect x="3" y="3" width="18" height="18" rx="3" />
+          <circle cx="8" cy="8" r="1" fill="currentColor" /><circle cx="16" cy="8" r="1" fill="currentColor" />
+          <circle cx="12" cy="12" r="1" fill="currentColor" />
+          <circle cx="8" cy="16" r="1" fill="currentColor" /><circle cx="16" cy="16" r="1" fill="currentColor" />
+        </svg>
+        Random route
+      </button>
 
       <div className="mt-2.5 border-t border-[rgba(0,47,108,0.12)] pt-2 text-[13px] text-[#243f5e]">
         {!both && 'Pick two stations to see which trains connect them.'}

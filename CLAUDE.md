@@ -311,7 +311,9 @@ averages shown to visitors. Do not expose the `_offset` variants.
   **route finder** (left-hand "Find a route" card, `lib/routeFinder.ts`): a route is a *direct
   train* that stops at the start station and later at the end station; every distinct path
   between them is highlighted (white core + ice halo, rest of the network dimmed) and the card
-  lists trains per type. No transfers. Coordinates come from `connections.json` endpoints.
+  lists trains per type. No transfers. Coordinates come from `connections.json` endpoints. A
+  "Random route" button picks a real train (weighted by runs) and two of its passenger stops at
+  least 100 km apart, so it always has a direct train.
 
 Keep total payload to a few hundred KB; lazy-load `route_detail` on click.
 
