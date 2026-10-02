@@ -137,6 +137,10 @@ export default function MapView({ stations, connections, finland, selected, onSe
         getColor: (d) => delayColor(d.avgDelay, isSel(d) || isHovered(d) ? 255 : dim ? 130 : 220),
         onHover: ({ object }) => {
           hoveredRef.current = (object as StationFeature | undefined) ?? null
+          // MapLibre's own canvas carries `cursor: grab`, which overrides the cursor deck.gl
+          // sets on its container -- so set it on the MapLibre canvas directly.
+          const canvas = mapRef.current?.getCanvas()
+          if (canvas) canvas.style.cursor = hoveredRef.current ? 'pointer' : ''
           overlayRef.current?.setProps({ layers: buildLayers() })
         },
         onClick: ({ object }) => onSelectRef.current((object as StationFeature | undefined) ?? null),
