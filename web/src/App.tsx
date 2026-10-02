@@ -40,8 +40,8 @@ export default function App() {
       <div className="absolute top-5 left-5 flex items-center gap-3.5 rounded-[10px] border border-(--line) bg-(--surface) px-[18px] py-4 backdrop-blur-[8px]">
         <FinnishFlag className="h-[26px] w-auto shrink-0 rounded-[2px] ring-1 ring-(--line)" />
         <div>
-          <h1 className="m-0 text-lg font-light tracking-wide">Finnish railways · January 2020</h1>
-          <p className="mt-0.5 mb-0 text-[13px] text-(--muted)">Click a station to see how late it runs</p>
+          <h1 className="m-0 text-lg font-light tracking-wide">Finnish long-distance trains · January 2020</h1>
+          <p className="mt-0.5 mb-0 text-[13px] text-(--muted)">Click a station to see how late long-distance trains run</p>
         </div>
       </div>
 
