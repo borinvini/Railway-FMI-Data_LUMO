@@ -85,6 +85,7 @@ export default function App() {
         routeHighlight={routeHighlight}
         onRouteClick={setDetailIndex}
         activeRoute={detailIndex}
+        onReset={() => { setSelected(null); setRouteStart(null); setRouteEnd(null); setDetailIndex(null) }}
       />
 
       <div className="absolute top-5 left-5 flex items-center gap-3.5 rounded-[10px] border border-(--line) bg-(--surface) px-[18px] py-4 backdrop-blur-[8px]">

@@ -43,6 +43,8 @@ interface MapProps {
   onRouteClick: (index: number) => void
   /** Index of the route whose details pop-up is open (drawn bolder), or null. */
   activeRoute: number | null
+  /** The Reset view button was pressed: App clears the station and route selection. */
+  onReset: () => void
 }
 
 /**
@@ -53,7 +55,7 @@ interface MapProps {
  * deck.gl are plain JS libraries here (no react-map-gl): the Map/overlay instances live in
  * refs and are created once in an effect, then kept in sync with props.
  */
-export default function MapView({ stations, connections, finland, selected, onSelect, routeHighlight, onRouteClick, activeRoute }: MapProps) {
+export default function MapView({ stations, connections, finland, selected, onSelect, routeHighlight, onRouteClick, activeRoute, onReset }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const overlayRef = useRef<MapboxOverlay | null>(null)
@@ -364,6 +366,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
   }, [routeHighlight])
 
   function resetView() {
+    onReset()
     mapRef.current?.flyTo({ ...DEFAULT_VIEW, duration: 600 })
   }
 
@@ -381,7 +384,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
         type="button"
         onClick={resetView}
         className={`absolute bottom-6 left-[270px] flex items-center gap-[7px] rounded-[10px] border border-(--line) bg-(--surface) px-[14px] py-[10px] text-[13px] text-(--muted) backdrop-blur-[8px] transition-opacity duration-150 hover:text-(--text) ${
-          resetShown ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
+          (resetShown || selected !== null || routeHighlight !== null) ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
         }`}
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-[14px] w-[14px]">
