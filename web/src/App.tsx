@@ -50,10 +50,6 @@ export default function App() {
       <Legend />
 
       {selected && <StationPanel station={selected} onClose={() => setSelected(null)} />}
-
-      <div className="absolute bottom-6 right-5 max-w-[260px] rounded-[10px] border border-(--line) bg-(--surface) px-[14px] py-[10px] text-xs text-(--muted) backdrop-blur-[8px]">
-        Station delays are real (parquet, arrival at that station); weather panel not built yet.
-      </div>
     </div>
   )
 }
