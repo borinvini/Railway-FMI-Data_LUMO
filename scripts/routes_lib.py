@@ -661,6 +661,36 @@ def weather_arrivals(events: pd.DataFrame, runs: pd.DataFrame, by=()) -> pd.Data
     return arrivals
 
 
+# A stop's weather for one train service needs at least this many readings to be shown.
+MIN_STOP_WEATHER = 5
+
+
+def weather_stop_means(events: pd.DataFrame, runs: pd.DataFrame, by=("from", "to", "trainType")) -> dict:
+    """{(*by values, station code): (n, mean air temperature, mean snow depth)} for each train
+    service at each of its stops, over the readings of that service's own runs.
+
+    Uses **every event type** (arrivals and departures): weather does not care which it is,
+    and a route's start station has only departures, so arrivals alone would leave the most
+    important pin empty. Snow depth readings below 0 (the -1 "no measurable snow" code) count as
+    0. Stops with fewer than MIN_STOP_WEATHER temperature readings are left out.
+    """
+    by = list(by)
+    frame = events.dropna(subset=["Air temperature"]).copy()
+    frame["runKey"] = frame["departureDate"].astype(str) + "_" + frame["trainNumber"].astype(str)
+    frame = frame.drop(columns=[c for c in by if c in frame.columns])
+    route_of_run = runs[["runKey"] + by].drop_duplicates("runKey")
+    frame = frame.merge(route_of_run, on="runKey", how="inner")
+    frame["snow"] = frame["Snow depth"].clip(lower=0)
+    grouped = frame.groupby(by + ["stationShortCode"], sort=False).agg(
+        n=("Air temperature", "size"), temp=("Air temperature", "mean"), snow=("snow", "mean")
+    )
+    grouped = grouped[grouped["n"] >= MIN_STOP_WEATHER]
+    return {
+        tuple(idx): (int(row["n"]), float(row["temp"]), None if pd.isna(row["snow"]) else float(row["snow"]))
+        for idx, row in grouped.iterrows()
+    }
+
+
 def weather_band_stats(arrivals: pd.DataFrame, group_cols: list[str]) -> dict:
     """{group key tuple: {"t": [band stats x3], "s": [band stats x3]}}, where a band's stats
     are `{"n", "avg", "latePct"}` (clamped mean delay, % late) or None below
@@ -830,6 +860,7 @@ def ems_weather_summary(events: pd.DataFrame) -> dict:
             "snow": {
                 "max": s_max, "maxAt": s_max_at if s_max and s_max > 0 else None,
                 "daysWithSnow": int(g.loc[snow >= 1, "date"].nunique()),
+                "avg": None if snow.dropna().empty else float(snow.mean()),
             },
             "gust": {"max": gust, "maxAt": gust_at},
             "visibility": {"min": vis, "minAt": vis_at},

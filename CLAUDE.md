@@ -396,6 +396,26 @@ copy says "weather station", never "EMS".
 - **Numbers are readings taken when trains were nearby**, not a continuous record, so min and max
   are "at train times" and the pop-up says so. One reading per station per 10-minute slot
   (79% of rows are duplicates). Days are departure dates. Under 100 readings, no numbers shown.
+- **Weather pins carry numbers** (navy teardrop, tip on the real location, temperature over snow
+  depth written in the head, Barlow Condensed): neutral on purpose, because colour on this map
+  means delay only. **Route mode** shows one pin per distinct weather station serving the route's
+  passenger stops, with the temperature and snow depth *when this route's own trains were at those
+  stops* (mean over arrivals and departures: weather ignores which, and a start station has no
+  arrivals; pooled by reading count). Grey outline = the route's trains had no figure, the
+  station's January average is shown. A selected station shows its January average. The pop-up
+  adds a line tying a route pin's number to its January tiles.
+- **Link lines** (thin lemon yellow, `EMS_LINK` in `Map.tsx`; greener than the delay amber so they
+  are not read as delay; under pins and badges) join each pin to the train stations matched to
+  it: in route mode the route's stations it serves; for a selected station every station sharing
+  that weather station (the selected one stronger). They follow the hide switch.
+- Crowding: ~6 distinct weather stations per route (max 24), 8-20 px apart at the route zoom, so
+  pins are thinned by screen distance (>= 50 px from other pin heads, >= 40 px from delay badges;
+  route ends always kept). Other pins are drawn **under** the badges; the two **route-end pins are
+  drawn above** theirs (an end's weather station is a few km away, so the head would otherwise be
+  half hidden behind the big end badge), and any neighbouring badge under an end pin's head is
+  dropped rather than left half covered (zooming in brings it back). A "Hide weather stations" switch sits in the
+  bottom row. Stop figures: `route_stats.json` stop rows are
+  `[code, trains, avgDelay, onTimePct, temp, snow, n]`.
 - Coordinates: top-5 file, then the `data/raw` CSV, then `EMS_COORD_OVERRIDES` in `routes_lib.py`
   (`Liperi Tuiskavanluoto`, from FMI's open station list).
 - Data: `stations.json[].ems`, lazy `ems_weather.json` (loaded on first open; ~96 KB, with daily

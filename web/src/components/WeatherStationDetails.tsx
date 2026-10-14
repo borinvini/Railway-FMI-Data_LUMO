@@ -20,6 +20,8 @@ interface WeatherStationDetailsProps {
   weather: EmsWeather | null
   dates: string[]
   loadFailed: boolean
+  /** One line tying a route pin's number to this pop-up's January-wide tiles; undefined otherwise. */
+  routeNote?: string
   onClose: () => void
 }
 
@@ -41,7 +43,7 @@ type View = 'temp' | 'snow' | 'wind'
  * it, so the extremes are "at train times" and the pop-up says so. Same shell and Esc handling
  * as RouteDetails. One chart at a time, switched by tabs, so the pop-up stays short.
  */
-export default function WeatherStationDetails({ ems, stationName, weather, dates, loadFailed, onClose }: WeatherStationDetailsProps) {
+export default function WeatherStationDetails({ ems, stationName, weather, dates, loadFailed, routeNote, onClose }: WeatherStationDetailsProps) {
   const [view, setView] = useState<View>('temp')
   // Stable identity, so the chart is only redrawn when the data (or the tab) changes.
   const tempRanges = useMemo(
@@ -96,6 +98,7 @@ export default function WeatherStationDetails({ ems, stationName, weather, dates
         <p className="m-0 mt-0.5 text-[15px] text-(--card-ink-2)">
           {ems.km.toFixed(1)} km from {stationName}. January 2020, at the times trains were nearby.
         </p>
+        {routeNote && <p className="m-0 mt-1 text-[15px] font-medium text-(--card-ink)">{routeNote}</p>}
         {ems.closest && (
           <p className="m-0 mt-1 text-[15px] text-(--card-ink-2)">
             A closer station, {ems.closest.name}

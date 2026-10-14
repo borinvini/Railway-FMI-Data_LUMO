@@ -1,8 +1,9 @@
 import { DELAY_RAMP_HEX, ROUTE_BADGE_NO_FIGURE, ROUTE_BADGE_STEPS, rgbCss } from '../lib/colors'
+import { WEATHER_PIN_GREY_ICON, WEATHER_PIN_ICON } from '../lib/markerIcon'
 
 /** Plain-language delay legend, bottom-left over the map (App places it in a row with Reset view). See CLAUDE.md "Map style". Shows the
  *  pin gradient normally, and the three badge colours while a route is highlighted. */
-export default function Legend({ routeMode }: { routeMode: boolean }) {
+export default function Legend({ routeMode, weatherShown }: { routeMode: boolean; weatherShown: boolean }) {
   if (routeMode) {
     return (
       <div className="w-[260px] rounded-[10px] border border-(--line) bg-(--surface) px-[18px] py-4 backdrop-blur-[8px]">
@@ -18,6 +19,18 @@ export default function Legend({ routeMode }: { routeMode: boolean }) {
             <span className="inline-block h-3 w-3 rounded-full border-2 border-[#8597ab] bg-transparent" />
             Grey ring: station's usual delay
           </li>
+          {weatherShown && (
+            <>
+              <li className="mt-1 flex items-start gap-2 border-t border-(--line) pt-2">
+                <img src={WEATHER_PIN_ICON.url} alt="" className="h-5 w-5 shrink-0" />
+                Weather station: temperature and snow depth for this route's trains
+              </li>
+              <li className="flex items-start gap-2">
+                <img src={WEATHER_PIN_GREY_ICON.url} alt="" className="h-5 w-5 shrink-0" />
+                Grey outline: January average
+              </li>
+            </>
+          )}
         </ul>
       </div>
     )

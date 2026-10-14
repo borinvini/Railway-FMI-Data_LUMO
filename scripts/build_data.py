@@ -130,7 +130,10 @@ def build_ems_weather_payload(summary: dict) -> dict:
                 "avg": r(v["temp"]["avg"], 1), "min": r(v["temp"]["min"], 1), "minAt": v["temp"]["minAt"],
                 "max": r(v["temp"]["max"], 1), "maxAt": v["temp"]["maxAt"],
             },
-            "snow": {"max": r(v["snow"]["max"], 0), "maxAt": v["snow"]["maxAt"], "daysWithSnow": v["snow"]["daysWithSnow"]},
+            "snow": {
+                "max": r(v["snow"]["max"], 0), "maxAt": v["snow"]["maxAt"],
+                "daysWithSnow": v["snow"]["daysWithSnow"], "avg": r(v["snow"]["avg"], 1),
+            },
             "gust": {"max": r(v["gust"]["max"], 1), "maxAt": v["gust"]["maxAt"]},
             "visibility": {"min": r(v["visibility"]["min"], 0), "minAt": v["visibility"]["minAt"]},
             "daily": [day(d) for d in v["daily"]],
@@ -234,18 +237,26 @@ def build_route_patterns_payload(runs) -> list[dict]:
     return payload
 
 
-def build_route_stats_payload(routes, service_weather=None) -> dict:
+def build_route_stats_payload(routes, service_weather=None, stop_weather=None) -> dict:
     """id (`<from>-<to>-<trainType>`) -> that service's headline delay stats and a
     compact per-stop list `[code, trains, avgDelay, onTimePct]` along its typical
     passenger stops. Same numbers as routes_index.csv (same aggregate() call)."""
     payload = {}
     for _, row in routes.sort_values("id").iterrows():
+        # Each stop row: [code, trains, avgDelay, onTimePct, temp, snow, weatherN]. The last three
+        # are the mean air temperature and snow depth (cm) when this service's own trains were at
+        # the stop, and how many readings that is (None, None, 0 when too few).
+        def weather_cells(code):
+            w = (stop_weather or {}).get((row["from"], row["to"], row["trainType"], code))
+            return [None, None, 0] if w is None else [_round_or_none(w[1], 1), _round_or_none(w[2], 0), w[0]]
+
         stops = [
             [
                 stop["code"],
                 int(stop["runs"]),
                 _round_or_none(stop["avgDelay"], 2),
                 _round_or_none(stop["onTimePct"], 1),
+                *weather_cells(stop["code"]),
             ]
             for stop in json.loads(row["stops"])
         ]
@@ -398,7 +409,11 @@ def main() -> int:
     service_routes = routes_lib.aggregate(
         runs, by=("from", "to", "trainType"), station_meta=station_meta, events=events
     )
-    route_stats_payload = build_route_stats_payload(service_routes, service_weather)
+    stop_weather = routes_lib.weather_stop_means(events, runs, by=("from", "to", "trainType"))
+    route_stats_payload = build_route_stats_payload(service_routes, service_weather, stop_weather)
+    stop_rows = [s for v in route_stats_payload.values() for s in v["stops"]]
+    with_weather = sum(1 for s in stop_rows if s[6] > 0)
+    print(f"stop weather: {with_weather} of {len(stop_rows)} service stops have a figure")
     summary_payload = build_summary_payload(events, runs, stations, pooled)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)

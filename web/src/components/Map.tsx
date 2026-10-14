@@ -8,8 +8,9 @@ import { delayColor, NETWORK_LINE_COLOR, NETWORK_LINE_CORE_COLOR, routeBadgeStep
 import { TOP_10_STATION_CODES } from '../lib/importantStations'
 import type { StationValue } from '../lib/routeStats'
 import { DEFAULT_VIEW, LEFT_PANEL_FRACTION, restyleBasemap } from '../lib/mapStyle'
-import { ROUTE_BADGE_ICON, STATION_MARKER_ICON, STATION_MARKER_OUTLINE_ICON, WEATHER_STATION_ICON } from '../lib/markerIcon'
-import type { ConnectionFeature, FinlandGeoJSON, RouteHighlight, StationEms, StationFeature } from '../lib/types'
+import { ROUTE_BADGE_ICON, STATION_MARKER_ICON, STATION_MARKER_OUTLINE_ICON, WEATHER_PIN_GREY_ICON, WEATHER_PIN_ICON } from '../lib/markerIcon'
+import { formatSnow, formatTemp } from '../lib/weatherFormat'
+import type { ConnectionFeature, FinlandGeoJSON, RouteHighlight, StationFeature, WeatherPin } from '../lib/types'
 
 // At the default zoom, only Finland's 10 biggest cities show a marker (see
 // lib/importantStations.ts); zooming in reveals progressively less prominent stations, ranked
@@ -22,6 +23,31 @@ const REVEAL_ZOOM_END = 8
 // drawn only if it is at least this far (screen pixels) from every badge already kept, so they
 // never overlap -- zooming in makes room for more.
 const MIN_BADGE_GAP_PX = 38
+
+// Weather pins (temperature and snow depth written in a navy pin whose tip is the weather
+// station): kept only if the pin head is at least this far from every kept pin head, and from
+// every kept delay badge, so neither is hidden. The route's start and end are always kept.
+const MIN_PIN_GAP_PX = 50
+const MIN_PIN_BADGE_GAP_PX = 40
+// A route-end pin is drawn above the badges, so a neighbouring badge under its head would be left
+// half hidden: such badges are dropped instead (zooming in brings them back).
+const MIN_END_PIN_BADGE_GAP_PX = 38
+const WEATHER_PIN_SIZE = 60
+// Distance (px) from the pin's tip up to the centre of its round head (34 of 64 icon units).
+const WEATHER_PIN_HEAD_UP = WEATHER_PIN_SIZE * (34 / 64)
+const WEATHER_FONT = "'Barlow Condensed', Barlow, system-ui, sans-serif"
+
+// Lines from each weather pin to the train stations it serves. Tune the look here: `color` is RGB,
+// `width` in pixels, `alpha` 0-255; "strong" is the selected station's own line. The yellow is a
+// lemon (hue ~54 degrees), deliberately greener than the delay amber (#ffb340, ~36 degrees) so a
+// link is not read as "2-5 min late".
+const EMS_LINK = {
+  color: [255, 230, 60],
+  width: 2.5,
+  widthStrong: 3.5,
+  alpha: 235,
+  alphaStrong: 255,
+} as const
 
 // MapLibre's worker (maplibre-gl-worker.mjs) imports a sibling chunk (maplibre-gl-shared.mjs)
 // via a relative ES module import. Pulling the worker in as a Vite `?url` import (tried first)
@@ -57,8 +83,15 @@ interface MapProps {
   onDriftChange: (drifted: boolean) => void
   /** The first view finished loading its tiles (or a timeout passed): App fades out the veil. */
   onReady: () => void
-  /** The selected station's weather station marker was clicked: App opens its weather pop-up. */
-  onWeatherStationClick: () => void
+  /** Weather pins for the highlighted route: one per distinct weather station, with the route's own
+   *  trains' figures. Thinned here by screen distance. */
+  weatherPins: WeatherPin[]
+  /** The selected station's weather station, with its January average (null if none). */
+  selectedWeatherPin: WeatherPin | null
+  /** The "Hide weather stations" switch: false hides the route's pins. */
+  showWeather: boolean
+  /** A weather pin was clicked: App opens its weather pop-up. */
+  onWeatherPinClick: (pin: WeatherPin) => void
 }
 
 /**
@@ -69,7 +102,7 @@ interface MapProps {
  * deck.gl are plain JS libraries here (no react-map-gl): the Map/overlay instances live in
  * refs and are created once in an effect, then kept in sync with props.
  */
-export default function MapView({ stations, connections, finland, selected, onSelect, routeHighlight, routeValues, onRouteClick, activeRoute, resetSignal, onDriftChange, onReady, onWeatherStationClick }: MapProps) {
+export default function MapView({ stations, connections, finland, selected, onSelect, routeHighlight, routeValues, onRouteClick, activeRoute, resetSignal, onDriftChange, onReady, weatherPins, selectedWeatherPin, showWeather, onWeatherPinClick }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const overlayRef = useRef<MapboxOverlay | null>(null)
@@ -91,7 +124,10 @@ export default function MapView({ stations, connections, finland, selected, onSe
   // significance -- recomputed whenever the station list changes, not on every render.
   const rankRef = useRef<Map<string, number>>(new Map())
   const onDriftRef = useRef(onDriftChange)
-  const onWeatherClickRef = useRef(onWeatherStationClick)
+  const onWeatherClickRef = useRef(onWeatherPinClick)
+  const weatherPinsRef = useRef(weatherPins)
+  const selectedPinRef = useRef(selectedWeatherPin)
+  const showWeatherRef = useRef(showWeather)
   const emsHoverRef = useRef(false)
   // Set for one tick by a click on the weather station marker so the map's own click handler
   // (which deselects on an empty-map click) does not clear the selection it belongs to.
@@ -100,7 +136,10 @@ export default function MapView({ stations, connections, finland, selected, onSe
 
   onSelectRef.current = onSelect
   onDriftRef.current = onDriftChange
-  onWeatherClickRef.current = onWeatherStationClick
+  onWeatherClickRef.current = onWeatherPinClick
+  weatherPinsRef.current = weatherPins
+  selectedPinRef.current = selectedWeatherPin
+  showWeatherRef.current = showWeather
   onReadyRef.current = onReady
   routeValuesRef.current = routeValues
   onRouteClickRef.current = onRouteClick
@@ -118,7 +157,6 @@ export default function MapView({ stations, connections, finland, selected, onSe
     const isRouteEnd = (d: StationFeature) => route !== null && (d.code === route.start || d.code === route.end)
     const isHovered = (d: StationFeature) => hovered?.code === d.code
     const touchesSelected = (d: ConnectionFeature) => sel !== null && (d.from === sel.code || d.to === sel.code)
-    const weatherStation = sel?.ems ?? null
 
     const revealT = Math.max(0, Math.min(1, (zoomRef.current - REVEAL_ZOOM_START) / (REVEAL_ZOOM_END - REVEAL_ZOOM_START)))
     const visibleCount = Math.round(TOP_10_STATION_CODES.length + (rankRef.current.size - TOP_10_STATION_CODES.length) * revealT)
@@ -126,6 +164,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
     // Route mode: only the highlighted route's stations get a marker, as badges thinned by screen
     // distance (start and end always kept, then the most important stations first).
     const badges: StationFeature[] = []
+    const badgePoints: { x: number; y: number }[] = []
     const map = mapRef.current
     if (route && map) {
       const byCode = new Map(currentStations.map((st) => [st.code, st]))
@@ -134,9 +173,19 @@ export default function MapView({ stations, connections, finland, selected, onSe
       const candidates = route.stationCodes
         .flatMap((code) => { const st = byCode.get(code); return st ? [st] : [] })
         .sort((a, b) => priority(a) - priority(b))
-      const kept: { x: number; y: number }[] = []
+      const kept = badgePoints
+      // Heads of the route-end weather pins (drawn above the badges, see `topPins` below).
+      const endHeads = showWeatherRef.current
+        ? weatherPinsRef.current
+            .filter((p) => p.isEnd)
+            .map((p) => {
+              const tip = map.project([p.ems.lon, p.ems.lat])
+              return { x: tip.x, y: tip.y - WEATHER_PIN_HEAD_UP }
+            })
+        : []
       for (const st of candidates) {
         const pt = map.project([st.lon, st.lat])
+        if (!isEndCode(st.code) && endHeads.some((h) => Math.hypot(h.x - pt.x, h.y - pt.y) < MIN_END_PIN_BADGE_GAP_PX)) continue
         if (isEndCode(st.code) || kept.every((k) => Math.hypot(k.x - pt.x, k.y - pt.y) >= MIN_BADGE_GAP_PX)) {
           kept.push(pt)
           badges.push(st)
@@ -144,6 +193,88 @@ export default function MapView({ stations, connections, finland, selected, onSe
       }
     }
     const badgeCodes = new Set(badges.map((st) => st.code))
+
+    // Weather pins: the route's weather stations thinned like the badges, but against the kept
+    // badges too, so a pin never covers a delay figure. The selected station's own weather
+    // station is always shown (with its link line and name) unless the route already has it.
+    const routePins: WeatherPin[] = []
+    if (route && map && showWeatherRef.current) {
+      const ordered = [...weatherPinsRef.current].sort(
+        (a, b) => Number(b.isEnd) - Number(a.isEnd) || b.stationCodes.length - a.stationCodes.length,
+      )
+      const heads: { x: number; y: number }[] = []
+      for (const pin of ordered) {
+        const tip = map.project([pin.ems.lon, pin.ems.lat])
+        const head = { x: tip.x, y: tip.y - WEATHER_PIN_HEAD_UP }
+        const clear =
+          heads.every((h) => Math.hypot(h.x - head.x, h.y - head.y) >= MIN_PIN_GAP_PX) &&
+          badgePoints.every((b) => Math.hypot(b.x - head.x, b.y - head.y) >= MIN_PIN_BADGE_GAP_PX)
+        if (pin.isEnd || clear) {
+          heads.push(head)
+          routePins.push(pin)
+        }
+      }
+    }
+    const selectedPin = sel ? selectedPinRef.current : null
+    const allPins =
+      selectedPin && !routePins.some((p) => p.key === selectedPin.key) ? [selectedPin, ...routePins] : routePins
+
+    // Lines from each weather pin to the train stations it was matched to: in a route, the route's
+    // stations it serves; for a selected station, every station that shares the weather station
+    // (the selected one stronger). Underneath the pins and badges.
+    const stationByCode = new Map(currentStations.map((st) => [st.code, st]))
+    const sharing = new Map<string, string[]>()
+    for (const st of currentStations) {
+      if (st.ems) sharing.set(st.ems.name, [...(sharing.get(st.ems.name) ?? []), st.code])
+    }
+    // The route's end pins are drawn above the delay badges (an end's weather station is usually
+    // a few km away, so its head would otherwise be half hidden behind the big end badge); the
+    // rest stay under, so a badge is never covered. The pin head leaves the badge's centre free.
+    const underPins = allPins.filter((p) => !p.isEnd)
+    const topPins = allPins.filter((p) => p.isEnd)
+    const pinLayers = (suffix: string, data: WeatherPin[]) => [
+      new IconLayer<WeatherPin>({
+        id: `ems-pin${suffix}`, data, pickable: true,
+        parameters: { depthCompare: 'always' },
+        getPosition: (d) => [d.ems.lon, d.ems.lat],
+        getIcon: (d) => (d.own ? WEATHER_PIN_ICON : WEATHER_PIN_GREY_ICON),
+        sizeUnits: 'pixels', getSize: WEATHER_PIN_SIZE,
+        onHover: emsHover, onClick: emsClick,
+      }),
+      new TextLayer<WeatherPin>({
+        id: `ems-temp${suffix}`, data,
+        parameters: { depthCompare: 'always' },
+        getPosition: (d) => [d.ems.lon, d.ems.lat],
+        getText: (d) => formatTemp(d.temp),
+        getSize: 20, sizeUnits: 'pixels',
+        getColor: [255, 255, 255, 255],
+        getPixelOffset: [0, -(WEATHER_PIN_HEAD_UP + 6)],
+        getTextAnchor: 'middle', getAlignmentBaseline: 'center',
+        fontFamily: WEATHER_FONT, fontWeight: 600,
+        characterSet: '0123456789\u2212\u00b0\u2013',
+      }),
+      new TextLayer<WeatherPin>({
+        id: `ems-snow${suffix}`, data,
+        parameters: { depthCompare: 'always' },
+        getPosition: (d) => [d.ems.lon, d.ems.lat],
+        getText: (d) => formatSnow(d.snow),
+        getSize: 14, sizeUnits: 'pixels',
+        getColor: [156, 195, 232, 255],
+        getPixelOffset: [0, -(WEATHER_PIN_HEAD_UP - 10)],
+        getTextAnchor: 'middle', getAlignmentBaseline: 'center',
+        fontFamily: WEATHER_FONT, fontWeight: 600,
+        characterSet: '0123456789 cm',
+      }),
+    ]
+    const links: { path: [number, number][]; strong: boolean }[] = []
+    for (const pin of allPins) {
+      const codes = pin.scope === 'route' ? pin.stationCodes : sharing.get(pin.ems.name) ?? pin.stationCodes
+      for (const code of codes) {
+        const st = stationByCode.get(code)
+        if (!st) continue
+        links.push({ path: [[st.lon, st.lat], [pin.ems.lon, pin.ems.lat]], strong: sel?.code === code })
+      }
+    }
     // Pins: normally the zoom-reveal rule; in route mode only a selected station that has no badge.
     const isRevealed = (d: StationFeature) =>
       route
@@ -166,10 +297,10 @@ export default function MapView({ stations, connections, finland, selected, onSe
       emsHoverRef.current = object !== undefined && object !== null
       setCursor()
     }
-    const emsClick = () => {
+    const emsClick = ({ object }: { object?: unknown }) => {
       emsClickRef.current = true
       window.setTimeout(() => { emsClickRef.current = false }, 0)
-      onWeatherClickRef.current()
+      if (object) onWeatherClickRef.current(object as WeatherPin)
     }
     const routeHover = ({ object }: { object?: unknown }) => {
       routeHoverRef.current = object !== undefined && object !== null
@@ -243,6 +374,34 @@ export default function MapView({ stations, connections, finland, selected, onSe
         onHover: routeHover, onClick: routeClick,
         updateTriggers: { getWidth: [activeIdx], getColor: [activeIdx] },
       }),
+      // Weather pins: a navy map pin whose tip is the weather station's real location, with the
+      // temperature and snow depth written in its head (see lib/markerIcon.ts). In a route they
+      // are the route's own trains' figures, for a selected station its January average. Drawn
+      // under the delay badges so a badge is never hidden; flat overlay like the badges, so they
+      // never z-fight with the lines. Clickable, which opens the January weather pop-up.
+      new PathLayer<{ path: [number, number][]; strong: boolean }>({
+        id: 'ems-links', data: links,
+        parameters: { depthCompare: 'always' },
+        getPath: (d) => d.path,
+        widthUnits: 'pixels', capRounded: true,
+        getWidth: (d) => (d.strong ? EMS_LINK.widthStrong : EMS_LINK.width),
+        getColor: (d) => [...EMS_LINK.color, d.strong ? EMS_LINK.alphaStrong : EMS_LINK.alpha],
+      }),
+      ...pinLayers('', underPins),
+      new TextLayer<WeatherPin>({
+        id: 'ems-label', data: selectedPin ? [selectedPin] : [],
+        parameters: { depthCompare: 'always' },
+        getPosition: (d) => [d.ems.lon, d.ems.lat],
+        getText: (d) => d.ems.name,
+        getSize: 15, sizeUnits: 'pixels',
+        getColor: [234, 241, 248, 255],
+        // The pin's tip is the anchor, so the name sits just below it.
+        getPixelOffset: [0, 6],
+        getTextAnchor: 'middle', getAlignmentBaseline: 'top',
+        fontFamily: 'Barlow, system-ui, sans-serif', fontWeight: 500,
+        characterSet: 'auto',
+        outlineWidth: 3, outlineColor: [2, 6, 13, 255],
+      }),
       // Route mode badges: a ring (white for start/end, navy otherwise) under a flat coloured
       // circle, with the typical delay at that stop written on top (colours: see
       // ROUTE_BADGE_STEPS). Pickable like the pins: hover tooltip, click opens the station pop-up.
@@ -290,6 +449,8 @@ export default function MapView({ stations, connections, finland, selected, onSe
         characterSet: '0123456789.–',
         updateTriggers: { getText: [routeValues], getColor: [routeValues], getSize: [route] },
       }),
+      // Route-end weather pins, above the badges (see `topPins`).
+      ...pinLayers('-top', topPins),
       // Black outline underneath the coloured pin: a stroked variant of the same icon (see
       // lib/markerIcon.ts), rendered at the SAME size as the pin above rather than scaled up --
       // the stroke is baked into the icon's own geometry, so it rings both the outer edge and
@@ -319,41 +480,6 @@ export default function MapView({ stations, connections, finland, selected, onSe
         onHover: stationHover,
         onClick: stationClick,
         updateTriggers: { getSize: [sel, hovered, revealT, route], getColor: [sel, hovered, route] },
-      }),
-      // The selected station's weather station: a thin ice link from the pin, a navy map pin with a
-      // thermometer whose tip is the station's real location (no delay colour, see
-      // lib/markerIcon.ts) and its name. Only
-      // present while a station is selected. Flat overlay like the route badges, so it never
-      // z-fights with the lines; clickable, which opens its January weather pop-up.
-      new PathLayer<[number, number][]>({
-        id: 'ems-link', data: weatherStation && sel ? [[[sel.lon, sel.lat], [weatherStation.lon, weatherStation.lat]]] : [],
-        parameters: { depthCompare: 'always' },
-        getPath: (d) => d,
-        widthUnits: 'pixels', capRounded: true,
-        getWidth: 2,
-        getColor: [156, 195, 232, 190],
-      }),
-      new IconLayer<StationEms>({
-        id: 'ems-marker', data: weatherStation ? [weatherStation] : [], pickable: true,
-        parameters: { depthCompare: 'always' },
-        getPosition: (d) => [d.lon, d.lat],
-        getIcon: () => WEATHER_STATION_ICON,
-        sizeUnits: 'pixels', getSize: 44,
-        onHover: emsHover, onClick: emsClick,
-      }),
-      new TextLayer<StationEms>({
-        id: 'ems-label', data: weatherStation ? [weatherStation] : [],
-        parameters: { depthCompare: 'always' },
-        getPosition: (d) => [d.lon, d.lat],
-        getText: (d) => d.name,
-        getSize: 15, sizeUnits: 'pixels',
-        getColor: [234, 241, 248, 255],
-        // The pin's tip is the anchor, so the name sits just below it.
-        getPixelOffset: [0, 6],
-        getTextAnchor: 'middle', getAlignmentBaseline: 'top',
-        fontFamily: 'Barlow, system-ui, sans-serif', fontWeight: 500,
-        characterSet: 'auto',
-        outlineWidth: 3, outlineColor: [2, 6, 13, 255],
       }),
     ]
   }
@@ -450,10 +576,19 @@ export default function MapView({ stations, connections, finland, selected, onSe
           let text: string
           if (layerId.startsWith('route-highlight')) {
             text = 'Click for route details'
-          } else if (layerId === 'ems-marker') {
-            // A weather station, not a train station: it has no `avgDelay`.
-            const ems = object as StationEms
-            text = `${ems.name} weather station\n${ems.km.toFixed(1)} km away\nClick for January weather`
+          } else if (layerId.startsWith('ems-pin')) {
+            // A weather pin, not a train station: it has no `avgDelay`.
+            const pin = object as WeatherPin
+            const t = `${formatTemp(pin.temp)}C`
+            const snow = pin.snow === null ? 'no snow figure' : `${formatSnow(pin.snow)} of snow`
+            if (pin.scope === 'month') {
+              text = `${pin.ems.name} weather station\n${pin.ems.km.toFixed(1)} km away\nJanuary average: ${t}, ${snow}\nClick for January weather`
+            } else {
+              const figures = pin.own
+                ? `${t} on average, ${snow},\nwhen this route's trains were there`
+                : `January average: ${t}, ${snow}\n(no figure for this route's own trains)`
+              text = `${pin.ems.name} weather station\n${figures}\nServes ${pin.stationNames.join(', ')}\nClick for January weather`
+            }
           } else {
             const station = object as StationFeature
             if (layerId === 'route-badge-fill') {
@@ -520,7 +655,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
     rankRef.current = rank
     overlayRef.current?.setProps({ layers: buildLayers() })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stations, connections, selected, routeHighlight, activeRoute, routeValues])
+  }, [stations, connections, selected, routeHighlight, activeRoute, routeValues, weatherPins, selectedWeatherPin, showWeather])
 
   // Pan to whichever station gets selected, whether that came from a map click or the
   // dropdown menu (StationSelect only lifts the selection to App; this is the one place

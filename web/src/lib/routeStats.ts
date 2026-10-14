@@ -1,5 +1,5 @@
 import { distanceKm } from './routeFinder'
-import type { RoutePath, RouteStatsFile, WeatherCell } from './types'
+import type { EmsWeatherFile, RoutePath, RouteStatsFile, StationFeature, WeatherCell, WeatherPin } from './types'
 
 export interface ServiceRow {
   id: string
@@ -20,6 +20,11 @@ export interface StopPoint {
   /** Typical minutes late at this stop; null when no service has data for it. */
   avg: number | null
   trains: number
+  /** Mean air temperature (°C) and snow depth (cm) when this route's trains were at the stop, and
+   *  how many readings that is (weight when stops are pooled). null / 0 when too few. */
+  temp: number | null
+  snow: number | null
+  weatherN: number
 }
 
 export interface RouteSummary {
@@ -106,7 +111,19 @@ export function summarizeRoute(
         return row && row[2] !== null && row[1] > 0 ? [{ avg: row[2], trains: row[1] }] : []
       })
       const trains = rows.reduce((sum, r) => sum + r.trains, 0)
-      return { code, name: stationNames.get(code) ?? code, avg: weightedMean(rows, (r) => r.avg, (r) => r.trains), trains }
+      const wx = found.flatMap(({ stat }) => {
+        const row = stat.stops.find((r) => r[0] === code)
+        return row && row[4] !== null && row[6] > 0 ? [{ temp: row[4], snow: row[5], n: row[6] }] : []
+      })
+      return {
+        code,
+        name: stationNames.get(code) ?? code,
+        avg: weightedMean(rows, (r) => r.avg, (r) => r.trains),
+        trains,
+        temp: weightedMean(wx, (r) => r.temp, (r) => r.n),
+        snow: weightedMean(wx, (r) => r.snow, (r) => r.n),
+        weatherN: wx.reduce((sum, r) => sum + r.n, 0),
+      }
     })
 
   return {
@@ -256,4 +273,77 @@ export function routeStationValues(
     if (!values.has(code) && avg !== undefined) values.set(code, { avg, own: false })
   }
   return values
+}
+
+/**
+ * One weather pin per distinct weather station serving the highlighted route's passenger stops.
+ * The numbers are the mean temperature and snow depth when *this route's own* trains were at the
+ * stops the station serves (pooled across stops by number of readings), like the per-route delay
+ * badges. Where the route's trains have no figure the station's January average is used instead
+ * (`own: false`). `names` maps station code to display name; `start`/`end` are the route ends.
+ */
+export function routeWeatherPins(
+  paths: RoutePath[],
+  stats: RouteStatsFile,
+  stations: StationFeature[],
+  names: Map<string, string>,
+  emsWeather: EmsWeatherFile | null,
+  start: string,
+  end: string,
+): WeatherPin[] {
+  const byCode = new Map(stations.map((s) => [s.code, s]))
+  // Pool each stop across the route's paths (they share stops), weighted by readings.
+  const stop = new Map<string, { tempSum: number; snowSum: number; snowN: number; n: number }>()
+  const onRoute = new Set<string>()
+  for (const path of paths) {
+    for (const p of summarizeRoute(path, stats, names).stops) {
+      onRoute.add(p.code)
+      if (p.temp === null || p.weatherN <= 0) continue
+      const e = stop.get(p.code) ?? { tempSum: 0, snowSum: 0, snowN: 0, n: 0 }
+      e.tempSum += p.temp * p.weatherN
+      e.n += p.weatherN
+      if (p.snow !== null) {
+        e.snowSum += p.snow * p.weatherN
+        e.snowN += p.weatherN
+      }
+      stop.set(p.code, e)
+    }
+  }
+
+  type Group = { station: StationFeature; codes: string[]; tempSum: number; n: number; snowSum: number; snowN: number }
+  const groups = new Map<string, Group>()
+  for (const code of onRoute) {
+    const station = byCode.get(code)
+    if (!station?.ems) continue
+    const g = groups.get(station.ems.name) ?? { station, codes: [], tempSum: 0, n: 0, snowSum: 0, snowN: 0 }
+    g.codes.push(code)
+    // One serving station labels the pop-up ("4 km from Ähtäri"): a route end if the weather
+    // station serves one (so Rovaniemi's reads "from Rovaniemi"), otherwise the nearest.
+    const isEnd = (c: string) => c === start || c === end
+    if (!isEnd(g.station.code) && (isEnd(code) || station.ems.km < g.station.ems!.km)) g.station = station
+    const e = stop.get(code)
+    if (e) {
+      g.tempSum += e.tempSum
+      g.n += e.n
+      g.snowSum += e.snowSum
+      g.snowN += e.snowN
+    }
+    groups.set(station.ems.name, g)
+  }
+
+  return [...groups.entries()].map(([name, g]) => {
+    const own = g.n > 0
+    const january = emsWeather?.stations[name]
+    return {
+      key: name,
+      ems: g.station.ems!,
+      scope: 'route' as const,
+      stationNames: [g.station.code, ...g.codes.filter((c) => c !== g.station.code)].map((c) => names.get(c) ?? c),
+      stationCodes: g.codes,
+      temp: own ? g.tempSum / g.n : january?.temp.avg ?? null,
+      snow: own ? (g.snowN > 0 ? g.snowSum / g.snowN : null) : january?.snow.avg ?? null,
+      own,
+      isEnd: g.codes.includes(start) || g.codes.includes(end),
+    }
+  })
 }

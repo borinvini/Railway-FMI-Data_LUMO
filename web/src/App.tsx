@@ -9,8 +9,9 @@ import StationPanel from './components/StationPanel'
 import StationSelect from './components/StationSelect'
 import WeatherStationDetails from './components/WeatherStationDetails'
 import { findRoutes, pickRandomRoute, toHighlight } from './lib/routeFinder'
-import { routeStationValues, type StationValue } from './lib/routeStats'
-import type { ConnectionFeature, EmsWeatherFile, FinlandGeoJSON, RoutePattern, RouteStatsFile, StationFeature, SummaryFile } from './lib/types'
+import { routeStationValues, routeWeatherPins, type StationValue } from './lib/routeStats'
+import { formatSnow, formatTemp } from './lib/weatherFormat'
+import type { ConnectionFeature, EmsWeatherFile, FinlandGeoJSON, RoutePattern, RouteStatsFile, StationFeature, SummaryFile, WeatherPin } from './lib/types'
 
 const NO_VALUES = new Map<string, StationValue>()
 // A kiosk left alone this long goes back to the start view (see the idle effect in App).
@@ -34,8 +35,11 @@ export default function App() {
   const [resetSignal, setResetSignal] = useState(0)
   const [drifted, setDrifted] = useState(false)
   const [mapReady, setMapReady] = useState(false)
-  // The selected station's weather station pop-up; ems_weather.json loads the first time it opens.
-  const [weatherOpen, setWeatherOpen] = useState(false)
+  // The weather station whose January pop-up is open (a pin on the map, or the selected station's
+  // via the station panel). ems_weather.json loads as soon as any weather pin is on screen.
+  const [weatherPin, setWeatherPin] = useState<WeatherPin | null>(null)
+  // The "Hide weather stations" switch (route mode); the pins are shown by default.
+  const [showWeather, setShowWeather] = useState(true)
   const [emsWeather, setEmsWeather] = useState<EmsWeatherFile | null>(null)
   const [emsFailed, setEmsFailed] = useState(false)
 
@@ -59,11 +63,12 @@ export default function App() {
     return () => { cancelled = true }
   }, [])
 
-  // A different station means the open weather pop-up no longer applies.
-  useEffect(() => { setWeatherOpen(false) }, [selected])
+  // A different station or route means the open weather pop-up no longer applies.
+  useEffect(() => { setWeatherPin(null) }, [selected, routeStart, routeEnd])
 
+  const needsEmsWeather = weatherPin !== null || selected?.ems != null || (routeStart !== null && routeEnd !== null)
   useEffect(() => {
-    if (!weatherOpen || emsWeather) return
+    if (!needsEmsWeather || emsWeather) return
     let cancelled = false
     setEmsFailed(false)
     fetch('data/ems_weather.json')
@@ -71,7 +76,7 @@ export default function App() {
       .then((data) => { if (!cancelled) setEmsWeather(data) })
       .catch(() => { if (!cancelled) setEmsFailed(true) })
     return () => { cancelled = true }
-  }, [weatherOpen, emsWeather])
+  }, [needsEmsWeather, emsWeather])
 
   // A different pair of stations (or clearing/swapping) means the open details no longer apply.
   useEffect(() => { setDetailIndex(null) }, [routeStart, routeEnd])
@@ -117,12 +122,38 @@ export default function App() {
     return routeStationValues(routeResult.paths, routeStats, names)
   }, [routeResult, routeStats, stations])
 
+  // Weather pins. Route mode: one per weather station on the route, with the route's own trains'
+  // temperature and snow depth. Otherwise the selected station's weather station, January average.
+  const stationNames = useMemo(() => new Map(stations.map((s) => [s.code, s.name.replace(/ asema$/, '')])), [stations])
+  const routePins = useMemo(
+    () =>
+      routeResult && routeStats && routeHighlight
+        ? routeWeatherPins(routeResult.paths, routeStats, stations, stationNames, emsWeather, routeHighlight.start, routeHighlight.end)
+        : [],
+    [routeResult, routeStats, routeHighlight, stations, stationNames, emsWeather],
+  )
+  const selectedPin = useMemo<WeatherPin | null>(() => {
+    if (!selected?.ems) return null
+    const january = emsWeather?.stations[selected.ems.name]
+    return {
+      key: selected.ems.name,
+      ems: selected.ems,
+      scope: 'month',
+      stationNames: [stationNames.get(selected.code) ?? selected.name],
+      stationCodes: [selected.code],
+      temp: january?.temp.avg ?? null,
+      snow: january?.snow.avg ?? null,
+      own: true,
+      isEnd: false,
+    }
+  }, [selected, emsWeather, stationNames])
+
   const resetAll = useCallback(() => {
     setSelected(null)
     setRouteStart(null)
     setRouteEnd(null)
     setDetailIndex(null)
-    setWeatherOpen(false)
+    setWeatherPin(null)
     setResetSignal((n) => n + 1)
   }, [])
 
@@ -161,7 +192,10 @@ export default function App() {
         resetSignal={resetSignal}
         onDriftChange={setDrifted}
         onReady={() => setMapReady(true)}
-        onWeatherStationClick={() => setWeatherOpen(true)}
+        weatherPins={routePins}
+        selectedWeatherPin={selectedPin}
+        showWeather={showWeather}
+        onWeatherPinClick={setWeatherPin}
       />
 
       <SideColumn>
@@ -193,7 +227,17 @@ export default function App() {
           starts to the right of the left column (not under it): the column can be tall, and the
           legend grows when a route is shown. */}
       <div className="pointer-events-none absolute bottom-6 left-[calc(clamp(300px,26vw,400px)+40px)] z-30 flex items-end gap-3">
-        <Legend routeMode={routeHighlight !== null} />
+        <Legend routeMode={routeHighlight !== null} weatherShown={showWeather && routePins.length > 0} />
+        {routeHighlight !== null && routePins.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowWeather((v) => !v)}
+            aria-pressed={showWeather}
+            className="pointer-events-auto flex min-h-11 items-center gap-2 rounded-[10px] border border-(--line) bg-(--surface) px-4 text-[15px] text-(--muted) backdrop-blur-[8px] hover:text-(--text)"
+          >
+            {showWeather ? 'Hide weather stations' : 'Show weather stations'}
+          </button>
+        )}
         <button
           type="button"
           onClick={resetAll}
@@ -225,16 +269,21 @@ export default function App() {
         />
       )}
 
-      {selected && <StationPanel station={selected} onClose={() => setSelected(null)} onShowWeather={() => setWeatherOpen(true)} />}
+      {selected && <StationPanel station={selected} onClose={() => setSelected(null)} onShowWeather={() => selectedPin && setWeatherPin(selectedPin)} />}
 
-      {weatherOpen && selected?.ems && (
+      {weatherPin && (
         <WeatherStationDetails
-          ems={selected.ems}
-          stationName={selected.name.replace(/ asema$/, '')}
-          weather={emsWeather?.stations[selected.ems.name] ?? null}
+          ems={weatherPin.ems}
+          stationName={weatherPin.stationNames[0]}
+          weather={emsWeather?.stations[weatherPin.ems.name] ?? null}
           dates={emsWeather?.dates ?? []}
           loadFailed={emsFailed}
-          onClose={() => setWeatherOpen(false)}
+          routeNote={
+            weatherPin.scope === 'route' && weatherPin.own
+              ? `When this route's trains were there: average ${formatTemp(weatherPin.temp)}C${weatherPin.snow === null ? '' : `, ${formatSnow(weatherPin.snow)} of snow`}.`
+              : undefined
+          }
+          onClose={() => setWeatherPin(null)}
         />
       )}
 

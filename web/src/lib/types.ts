@@ -48,7 +48,7 @@ export interface EmsWeather {
   slotShare: number | null
   days: number
   temp: { avg: number | null; min: number | null; minAt: string | null; max: number | null; maxAt: string | null }
-  snow: { max: number | null; maxAt: string | null; daysWithSnow: number }
+  snow: { max: number | null; maxAt: string | null; daysWithSnow: number; avg: number | null }
   gust: { max: number | null; maxAt: string | null }
   visibility: { min: number | null; minAt: string | null }
   /** [min, mean, max] air temperature per date, null on days with no readings. */
@@ -56,6 +56,24 @@ export interface EmsWeather {
   /** Deepest snow (cm) and strongest gust (m/s) per date, null on days with no reading. */
   snowDaily: (number | null)[]
   gustDaily: (number | null)[]
+}
+
+/** One weather pin on the map: a weather station, with the figures written inside it. In a route
+ *  (`scope: 'route'`) the numbers are those of the route's own trains at the stops the station
+ *  serves; for a single selected station (`scope: 'month'`) they are the station's January
+ *  average. `own: false` = the route's trains had no figure, so the January average is shown. */
+export interface WeatherPin {
+  key: string
+  /** Location, plus `km` to the nearest train station it serves on the route. */
+  ems: StationEms
+  scope: 'route' | 'month'
+  stationNames: string[]
+  stationCodes: string[]
+  temp: number | null
+  snow: number | null
+  own: boolean
+  /** Serves the route's start or end station: always shown, first in line. */
+  isEnd: boolean
 }
 
 export interface EmsWeatherFile {
@@ -139,7 +157,10 @@ export interface RouteStat {
   minor: number | null
   major: number | null
   cancelled: number | null
-  stops: [string, number, number | null, number | null][]
+  /** [station code, trains, average minutes late, % on time, mean air temperature (°C), mean snow
+   *  depth (cm), readings behind the two weather numbers]. The weather is that of this service's own
+   *  trains at the stop (arrivals and departures); null / 0 when there were too few readings. */
+  stops: [string, number, number | null, number | null, number | null, number | null, number][]
   /** This service's arrivals by weather band: [arrivals, mean minutes late, % late] per band, null
    *  where the band had too few arrivals. `t` = frost / around freezing / mild; `s` = no snow /
    *  a little / deep. null when the service has no weather readings. */

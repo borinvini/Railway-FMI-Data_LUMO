@@ -69,25 +69,27 @@ export const ROUTE_BADGE_ICON = {
   mask: true,
 } as const
 
-// Weather station marker: a map pin like the station pins, so its tip sits exactly on the
-// station's real location, but navy with an ice outline and a thermometer in the head -- a
-// different look from the delay-coloured pins (colour on this map is reserved for delay), so
-// the two are never confused. Full colour, not a mask. Anchored at the pin's tip.
+// Weather station pin: a map pin like the station pins, so its tip sits exactly on the weather
+// station's real location, but navy with an outline and no hole -- the head carries the numbers
+// (temperature, snow depth) written on top by a TextLayer, like the route delay badges. Navy with
+// an ice outline is the one look; the grey outline marks "no figure for this route's own trains,
+// the station's January average is shown", the same grey ring as the delay badges. Full colour,
+// not a mask: colour on this map is reserved for delay. Anchored at the pin's tip.
 const WS_SIZE = 64
 
-const weatherStationSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${WS_SIZE}" height="${WS_SIZE}" viewBox="0 0 64 64">
-  <path d="M32 3C18.7 3 8 13.7 8 27c0 17.2 24 34 24 34s24-16.8 24-34C56 13.7 45.3 3 32 3Z" fill="#06101f" stroke="#9cc3e8" stroke-width="4" stroke-linejoin="round"/>
-  <rect x="29.5" y="13" width="5" height="20" rx="2.5" fill="#ffffff"/>
-  <circle cx="32" cy="35" r="6.5" fill="#ffffff"/>
-  <rect x="31" y="22" width="2" height="14" fill="#06101f"/>
-  <circle cx="32" cy="35" r="3.4" fill="#06101f"/>
+const weatherPinSvg = (outline: string) => `<svg xmlns="http://www.w3.org/2000/svg" width="${WS_SIZE}" height="${WS_SIZE}" viewBox="0 0 64 64">
+  <path d="M32 3C18.7 3 8 13.7 8 27c0 17.2 24 34 24 34s24-16.8 24-34C56 13.7 45.3 3 32 3Z" fill="#06101f" stroke="${outline}" stroke-width="4" stroke-linejoin="round"/>
 </svg>`
 
-export const WEATHER_STATION_ICON = {
-  url: `data:image/svg+xml;utf8,${encodeURIComponent(weatherStationSvg)}`,
-  width: WS_SIZE,
-  height: WS_SIZE,
-  anchorX: WS_SIZE / 2,
-  anchorY: WS_SIZE,
-  mask: false,
-} as const
+const weatherPinIcon = (outline: string) =>
+  ({
+    url: `data:image/svg+xml;utf8,${encodeURIComponent(weatherPinSvg(outline))}`,
+    width: WS_SIZE,
+    height: WS_SIZE,
+    anchorX: WS_SIZE / 2,
+    anchorY: WS_SIZE,
+    mask: false,
+  }) as const
+
+export const WEATHER_PIN_ICON = weatherPinIcon('#9cc3e8')
+export const WEATHER_PIN_GREY_ICON = weatherPinIcon('#8597ab')
