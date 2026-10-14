@@ -432,7 +432,8 @@ copy says "weather station", never "EMS".
 
 ### "Live" (experimental, branch `live-train`)
 
-After choosing a route, **Live** (button in the route finder card) sends a train along the busiest
+After choosing a route, **Play the journey** (button in the route finder card; "Live" was dropped
+because it reads as real time) sends a train along the busiest
 variant (`routeResult.paths[0]`): the camera flies to the start, follows the train, and at the last
 station fits the whole route again. Each station's delay badge and weather pin appear as the train
 reaches it; a now-playing card (`LiveCard`) shows the current stop's figures. Esc, Stop, Reset view or
@@ -442,6 +443,9 @@ another route ends it; map pan/zoom is locked while it runs, and the 90 s idle r
   timetable; the card says so. Do not present it as live data.
 - `lib/liveTrain.ts` is pure (geometry, timeline, `sample`); `Map.tsx` runs the `requestAnimationFrame`
   loop (effect on `live`). All tunables are in `LIVE` (cruise speed, dwell, zoom, easing, snap).
+- **Layering:** the route line and its lit trail are always *behind* every station badge and weather
+  pin (trail layers sit right above the base route line in `buildLayers`); only the train and its
+  pulsing ring draw above them.
 - Duration is about 40-70 s (moving 12-45 s plus ~0.9 s at every passenger station, shortened to
   stay under 70 s).
 - To discard: `git switch station-network-map && git branch -D live-train`.

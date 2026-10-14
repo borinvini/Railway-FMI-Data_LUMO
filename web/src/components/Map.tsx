@@ -325,9 +325,11 @@ export default function MapView({ stations, connections, finland, selected, onSe
         ? isSel(d) && !badgeCodes.has(d.code)
         : isSel(d) || isHovered(d) || (rankRef.current.get(d.code) ?? Infinity) < visibleCount
 
-    // The Live train: the route lit up behind it, a pulsing ring and the train itself on top.
+    // The Live run: the route lit up behind the train (`liveTrail`, drawn right above the base route
+    // line so it stays under every station badge and weather pin), and the train with its
+    // pulsing ring on top of everything (`liveTrain`).
     const pulse = ((typeof performance !== 'undefined' ? performance.now() : 0) % 1400) / 1400
-    const liveLayers = liveFrame
+    const liveTrail = liveFrame
       ? [
           new PathLayer<[number, number][]>({
             id: 'live-trail-glow', data: [liveFrame.trail],
@@ -341,6 +343,10 @@ export default function MapView({ stations, connections, finland, selected, onSe
             getPath: (d) => d, widthUnits: 'pixels', capRounded: true, jointRounded: true,
             getWidth: 5, getColor: [255, 255, 255, 255],
           }),
+        ]
+      : []
+    const liveTrain = liveFrame
+      ? [
           new ScatterplotLayer<[number, number]>({
             id: 'live-pulse', data: [[liveFrame.sample.lon, liveFrame.sample.lat]],
             parameters: { depthCompare: 'always' },
@@ -456,6 +462,9 @@ export default function MapView({ stations, connections, finland, selected, onSe
         onHover: routeHover, onClick: routeClick,
         updateTriggers: { getWidth: [activeIdx], getColor: [activeIdx] },
       }),
+      // The lit part of the route while a Live run is going: above the base route line, below
+      // everything that marks a station.
+      ...liveTrail,
       // Weather pins: a navy map pin whose tip is the weather station's real location, with the
       // temperature and snow depth written in its head (see lib/markerIcon.ts). In a route they
       // are the route's own trains' figures, for a selected station its January average. Drawn
@@ -563,7 +572,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
         onClick: stationClick,
         updateTriggers: { getSize: [sel, hovered, revealT, route], getColor: [sel, hovered, route] },
       }),
-      ...liveLayers,
+      ...liveTrain,
     ]
   }
 
