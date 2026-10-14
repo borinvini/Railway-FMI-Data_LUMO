@@ -21,6 +21,10 @@ export const LIVE = {
   followLerp: 0.15,
   /** If the train is further than this from the camera centre (px), jump straight to it. */
   snapPx: 450,
+  /** The station name beside the train: fade in on arrival, stay a moment after leaving, fade out. */
+  nameFadeInSeconds: 0.22,
+  nameLingerSeconds: 0.7,
+  nameFadeOutSeconds: 0.5,
   flyInMs: 1600,
   fitMs: 1800,
 } as const

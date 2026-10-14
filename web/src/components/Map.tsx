@@ -86,6 +86,8 @@ interface LiveFrame {
   sample: LiveSample
   reached: Set<string>
   trail: [number, number][]
+  /** The name of the station the train is at (or has just left), faded in and out; null otherwise. */
+  label: { name: string; alpha: number } | null
 }
 
 interface MapProps {
@@ -361,6 +363,25 @@ export default function MapView({ stations, connections, finland, selected, onSe
             getPosition: (d) => d,
             getIcon: () => LIVE_TRAIN_ICON,
             sizeUnits: 'pixels', getSize: 42,
+          }),
+          // The name of the station being passed, in a navy tag beside the train.
+          new TextLayer<{ name: string; alpha: number }>({
+            id: 'live-station-name', data: liveFrame.label ? [liveFrame.label] : [],
+            parameters: { depthCompare: 'always' },
+            getPosition: () => [liveFrame.sample.lon, liveFrame.sample.lat],
+            getText: (d) => d.name,
+            getSize: 24, sizeUnits: 'pixels',
+            getColor: (d) => [255, 255, 255, Math.round(255 * d.alpha)],
+            getPixelOffset: [34, -30],
+            getTextAnchor: 'start', getAlignmentBaseline: 'center',
+            fontFamily: WEATHER_FONT, fontWeight: 600,
+            characterSet: 'auto',
+            background: true,
+            backgroundPadding: [12, 6],
+            getBackgroundColor: (d) => [6, 16, 31, Math.round(235 * d.alpha)],
+            getBorderColor: (d) => [156, 195, 232, Math.round(200 * d.alpha)],
+            getBorderWidth: 1.5,
+            updateTriggers: { getColor: [liveFrame.label?.alpha], getBackgroundColor: [liveFrame.label?.alpha], getBorderColor: [liveFrame.label?.alpha] },
           }),
         ]
       : []
@@ -812,7 +833,19 @@ export default function MapView({ stations, connections, finland, selected, onSe
       if (ended) return
       const t = Math.max(0, (now - startAt) / 1000)
       const s = sample(timeline, t)
-      liveFrameRef.current = { timeline, sample: s, reached: reachedCodes(timeline, s.reached), trail: trailPath(timeline.route, s.km) }
+      // The station's name rides with the train: it fades in as the train arrives and fades out
+      // shortly after it pulls away (the last station's stays until the run ends). When two
+      // stations are close together the newer name simply replaces the older.
+      let label: LiveFrame['label'] = null
+      if (s.at >= 0) {
+        const k = s.at
+        const into = Math.min(1, Math.max(0, (t - timeline.arriveAt[k]) / LIVE.nameFadeInSeconds))
+        const isLast = k === timeline.passengerIndexes.length - 1
+        const out = isLast ? 0 : Math.min(1, Math.max(0, (t - (timeline.departAt[k] + LIVE.nameLingerSeconds)) / LIVE.nameFadeOutSeconds))
+        const alpha = into * (1 - out)
+        if (alpha > 0.01) label = { name: timeline.route.stops[timeline.passengerIndexes[k]].name, alpha }
+      }
+      liveFrameRef.current = { timeline, sample: s, reached: reachedCodes(timeline, s.reached), trail: trailPath(timeline.route, s.km), label }
       if (s.reached !== lastReached) {
         lastReached = s.reached
         onLiveProgressRef.current(s)

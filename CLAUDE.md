@@ -443,6 +443,10 @@ another route ends it; map pan/zoom is locked while it runs, and the 90 s idle r
   timetable; the card says so. Do not present it as live data.
 - `lib/liveTrain.ts` is pure (geometry, timeline, `sample`); `Map.tsx` runs the `requestAnimationFrame`
   loop (effect on `live`). All tunables are in `LIVE` (cruise speed, dwell, zoom, easing, snap).
+- **Station names:** the name of the station being passed rides beside the train in a navy tag
+  (`live-station-name` layer): fades in as the train arrives, lingers ~0.7 s after it pulls out, then
+  fades (the last station's stays until the run ends). Only passenger stations have names; waypoints
+  are passed silently. Timings in `LIVE.name*`.
 - **Layering:** the route line and its lit trail are always *behind* every station badge and weather
   pin (trail layers sit right above the base route line in `buildLayers`); only the train and its
   pulsing ring draw above them.
