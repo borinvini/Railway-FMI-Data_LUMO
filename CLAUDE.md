@@ -378,6 +378,31 @@ within 42 km). The site uses **air temperature** and **snow depth** at arrival t
   (`RouteDetails` + `WeatherBars`), station panel. Data: `summary.json.weather`,
   `route_stats.json[id].w`, `stations.json[].weather`.
 
+### Weather stations (FMI "EMS") on the map
+
+Selecting a train station also shows its closest weather station (pin marker, link line,
+name; click or "See January weather" in the station panel opens `WeatherStationDetails`). UI
+copy says "weather station", never "EMS".
+
+- **The matched parquet was built from `metadata_top5_closest_ems.csv`, not the single-closest
+  CSV.** Per variable the join takes the first of the 5 closest stations that has a value;
+  `closest_ems` carries rank 1. It equals top-5 rank 1 for 173 of 190 passenger stations but the
+  `data/raw/metadata_closest_ems_to_train_stations.csv` closest for only 144 (a different
+  version). **Marker rule: top-5 rank 1**; if that name has no parquet rows (13 stations) the
+  parquet's own label is shown and the pop-up says a closer station has no readings.
+- Fallback is large (snow depth comes from rank 1 at 139 of 190 stations, wind at 126), so copy
+  must never say "this station measured it". The parquet does not record which rank supplied a
+  value.
+- **Numbers are readings taken when trains were nearby**, not a continuous record, so min and max
+  are "at train times" and the pop-up says so. One reading per station per 10-minute slot
+  (79% of rows are duplicates). Days are departure dates. Under 100 readings, no numbers shown.
+- Coordinates: top-5 file, then the `data/raw` CSV, then `EMS_COORD_OVERRIDES` in `routes_lib.py`
+  (`Liperi Tuiskavanluoto`, from FMI's open station list).
+- Data: `stations.json[].ems`, lazy `ems_weather.json` (loaded on first open).
+- The raw FMI observations (`Railway-FMI-Data-CSV-Files-v2/weather_data_parquet`, every 10 min,
+  198 stations) exist and would give true monthly extremes, but the owner chose train-time
+  readings only.
+
 ## Conventions
 
 - `scripts/routes_lib.py` is the **only** module that reads the parquet (fastparquet,

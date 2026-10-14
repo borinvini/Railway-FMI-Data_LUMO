@@ -33,6 +33,10 @@ COLUMNS = [
     # Weather at the nearest FMI station when the event happened (see weather_arrivals).
     "Air temperature",
     "Snow depth",
+    # Weather-station panel (ems_weather_summary).
+    "closest_ems",
+    "Gust speed",
+    "Horizontal visibility",
 ]
 
 # "On time" threshold used throughout the project (CLAUDE.md delay convention).
@@ -721,6 +725,120 @@ def pooled_same_station(station_stats: dict) -> dict:
             "worseAt": int(sum(1 for r in rows if r[1] > r[2])),
         }
     return result
+
+
+# Weather stations the parquet uses that appear in neither EMS CSV. Coordinates from FMI's open
+# station list (opendata.fmi.fi, fmi::ef::stations), like the HMK override for a train station.
+EMS_COORD_OVERRIDES = {
+    "Liperi Tuiskavanluoto": (62.546010, 29.668180),
+}
+
+# Weather readings are matched to a 10-minute slot; many events share one station and slot.
+EMS_SLOT = "10min"
+
+
+def load_ems_top5(top5_csv: Path) -> dict[str, list[dict]]:
+    """Train station code -> its 5 closest weather stations, nearest first, each
+    `{name, lat, lon, km}`. The matched parquet was built from this list: per variable the
+    first of the five that has a value is used, and `closest_ems` carries rank 1."""
+    top5 = pd.read_csv(top5_csv, encoding="utf-8").dropna(subset=["train_station_short_code"])
+    out: dict[str, list[dict]] = {}
+    for _, row in top5.drop_duplicates("train_station_short_code").iterrows():
+        ranked = []
+        for i in range(1, 6):
+            name = row.get(f"ems_{i}_station")
+            if isinstance(name, str) and name:
+                ranked.append(
+                    {
+                        "name": name,
+                        "lat": float(row[f"ems_{i}_lat"]),
+                        "lon": float(row[f"ems_{i}_long"]),
+                        "km": float(row[f"ems_{i}_distance_km"]),
+                    }
+                )
+        out[row["train_station_short_code"]] = ranked
+    return out
+
+
+def ems_coordinates(top5: dict[str, list[dict]], closest_csv: Path) -> dict[str, tuple[float, float]]:
+    """Weather station name -> (lat, lon): every name in the top-5 file, then the single-closest
+    CSV for any that are missing, then EMS_COORD_OVERRIDES."""
+    coords: dict[str, tuple[float, float]] = {}
+    for ranked in top5.values():
+        for ems in ranked:
+            coords.setdefault(ems["name"], (ems["lat"], ems["lon"]))
+    closest = pd.read_csv(closest_csv)
+    for _, row in closest.drop_duplicates("closest_ems_station").iterrows():
+        coords.setdefault(row["closest_ems_station"], (float(row["ems_latitude"]), float(row["ems_longitude"])))
+    coords.update(EMS_COORD_OVERRIDES)
+    return coords
+
+
+def station_ems_label(events: pd.DataFrame) -> pd.Series:
+    """Train station code -> the weather station the parquet labelled its weather with
+    (`closest_ems`, most common value)."""
+    labelled = events.dropna(subset=["closest_ems", "stationShortCode"])
+    return labelled.groupby("stationShortCode")["closest_ems"].agg(lambda s: s.mode().iat[0])
+
+
+def _at(series: pd.Series, dates: pd.Series, pick) -> tuple[float | None, str | None]:
+    """The extreme value of `series` (pick = idxmin/idxmax) and the date it happened."""
+    valid = series.dropna()
+    if valid.empty:
+        return None, None
+    i = pick(valid)
+    return float(valid.loc[i]), dates.loc[i]
+
+
+def ems_weather_summary(events: pd.DataFrame) -> dict:
+    """Per weather station (the parquet's `closest_ems`): January statistics from the readings
+    taken when trains were nearby. NOT true monthly extremes -- there are no readings while no
+    train is around. One reading per station per EMS_SLOT: events share slots heavily (about
+    79% of rows are duplicates), and counting each would weight busy minutes.
+
+    Returns {"dates": [...], "stations": {name: {...}}}; `daily` rows align with `dates` and are
+    `[min, mean, max]` air temperature or None for a day with no readings. Days are departure
+    dates."""
+    frame = events.dropna(subset=["closest_ems", "scheduledTime"]).copy()
+    frame["slot"] = frame["scheduledTime"].dt.floor(EMS_SLOT)
+    frame = frame.drop_duplicates(["closest_ems", "slot"])
+    # Day = the run's departure date (as everywhere else on the site), so a night train's
+    # readings after midnight stay with the day it left, not the next month's first day.
+    frame["date"] = frame["departureDate"].astype(str).str.slice(0, 10)
+    dates = sorted(frame["date"].unique())
+    slots_per_day = 24 * 60 // int(EMS_SLOT.rstrip("min"))
+
+    stations: dict[str, dict] = {}
+    for name, g in frame.groupby("closest_ems", sort=True):
+        temp, snow = g["Air temperature"], g["Snow depth"].clip(lower=0)
+        t_min, t_min_at = _at(temp, g["date"], pd.Series.idxmin)
+        t_max, t_max_at = _at(temp, g["date"], pd.Series.idxmax)
+        s_max, s_max_at = _at(snow, g["date"], pd.Series.idxmax)
+        gust, gust_at = _at(g["Gust speed"], g["date"], pd.Series.idxmax)
+        vis, vis_at = _at(g["Horizontal visibility"], g["date"], pd.Series.idxmin)
+        by_day = g.groupby("date")["Air temperature"].agg(["min", "mean", "max"])
+        stations[name] = {
+            "readings": int(len(g)),
+            "slotShare": float(len(g) / (len(dates) * slots_per_day)) if dates else None,
+            "days": int(g["date"].nunique()),
+            "temp": {
+                "avg": None if temp.dropna().empty else float(temp.mean()),
+                "min": t_min, "minAt": t_min_at, "max": t_max, "maxAt": t_max_at,
+            },
+            "snow": {
+                "max": s_max, "maxAt": s_max_at if s_max and s_max > 0 else None,
+                "daysWithSnow": int(g.loc[snow >= 1, "date"].nunique()),
+            },
+            "gust": {"max": gust, "maxAt": gust_at},
+            "visibility": {"min": vis, "minAt": vis_at},
+            "daily": [
+                None
+                if d not in by_day.index or pd.isna(by_day.at[d, "min"])
+                else [float(by_day.at[d, "min"]), float(by_day.at[d, "mean"]), float(by_day.at[d, "max"])]
+                for d in dates
+            ],
+        }
+    return {"dates": dates, "stations": stations}
 
 
 def station_coverage_warning(events: pd.DataFrame, metadata_csv: Path) -> tuple[int, int, list[str]]:

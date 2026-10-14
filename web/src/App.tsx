@@ -7,9 +7,10 @@ import RouteFinder from './components/RouteFinder'
 import SideColumn from './components/SideColumn'
 import StationPanel from './components/StationPanel'
 import StationSelect from './components/StationSelect'
+import WeatherStationDetails from './components/WeatherStationDetails'
 import { findRoutes, pickRandomRoute, toHighlight } from './lib/routeFinder'
 import { routeStationValues, type StationValue } from './lib/routeStats'
-import type { ConnectionFeature, FinlandGeoJSON, RoutePattern, RouteStatsFile, StationFeature, SummaryFile } from './lib/types'
+import type { ConnectionFeature, EmsWeatherFile, FinlandGeoJSON, RoutePattern, RouteStatsFile, StationFeature, SummaryFile } from './lib/types'
 
 const NO_VALUES = new Map<string, StationValue>()
 // A kiosk left alone this long goes back to the start view (see the idle effect in App).
@@ -33,6 +34,10 @@ export default function App() {
   const [resetSignal, setResetSignal] = useState(0)
   const [drifted, setDrifted] = useState(false)
   const [mapReady, setMapReady] = useState(false)
+  // The selected station's weather station pop-up; ems_weather.json loads the first time it opens.
+  const [weatherOpen, setWeatherOpen] = useState(false)
+  const [emsWeather, setEmsWeather] = useState<EmsWeatherFile | null>(null)
+  const [emsFailed, setEmsFailed] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -53,6 +58,20 @@ export default function App() {
     })
     return () => { cancelled = true }
   }, [])
+
+  // A different station means the open weather pop-up no longer applies.
+  useEffect(() => { setWeatherOpen(false) }, [selected])
+
+  useEffect(() => {
+    if (!weatherOpen || emsWeather) return
+    let cancelled = false
+    setEmsFailed(false)
+    fetch('data/ems_weather.json')
+      .then((r) => r.json() as Promise<EmsWeatherFile>)
+      .then((data) => { if (!cancelled) setEmsWeather(data) })
+      .catch(() => { if (!cancelled) setEmsFailed(true) })
+    return () => { cancelled = true }
+  }, [weatherOpen, emsWeather])
 
   // A different pair of stations (or clearing/swapping) means the open details no longer apply.
   useEffect(() => { setDetailIndex(null) }, [routeStart, routeEnd])
@@ -103,6 +122,7 @@ export default function App() {
     setRouteStart(null)
     setRouteEnd(null)
     setDetailIndex(null)
+    setWeatherOpen(false)
     setResetSignal((n) => n + 1)
   }, [])
 
@@ -141,6 +161,7 @@ export default function App() {
         resetSignal={resetSignal}
         onDriftChange={setDrifted}
         onReady={() => setMapReady(true)}
+        onWeatherStationClick={() => setWeatherOpen(true)}
       />
 
       <SideColumn>
@@ -204,7 +225,18 @@ export default function App() {
         />
       )}
 
-      {selected && <StationPanel station={selected} onClose={() => setSelected(null)} />}
+      {selected && <StationPanel station={selected} onClose={() => setSelected(null)} onShowWeather={() => setWeatherOpen(true)} />}
+
+      {weatherOpen && selected?.ems && (
+        <WeatherStationDetails
+          ems={selected.ems}
+          stationName={selected.name.replace(/ asema$/, '')}
+          weather={emsWeather?.stations[selected.ems.name] ?? null}
+          dates={emsWeather?.dates ?? []}
+          loadFailed={emsFailed}
+          onClose={() => setWeatherOpen(false)}
+        />
+      )}
 
       {/* Until the first tiles arrive the basemap is flat navy, which reads as broken. */}
       <div

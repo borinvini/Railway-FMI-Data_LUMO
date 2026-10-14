@@ -27,6 +27,37 @@ export interface StationFeature {
   /** Weather at this station in January (null if no readings). Each band is the share of
    *  arrivals more than 5 min late, or null when fewer than 30 arrivals fell in it. */
   weather: StationWeather | null
+  /** The weather station shown for this station (null if none could be placed). */
+  ems: StationEms | null
+}
+
+/** A weather station (FMI "EMS") shown on the map for a selected train station. `closest` is set
+ *  only when a different, nearer station is the top-5 rank 1 but has no train readings in the
+ *  data (see scripts/build_data.py `build_station_ems`). */
+export interface StationEms {
+  name: string
+  lat: number
+  lon: number
+  km: number
+  closest: { name: string; km: number | null } | null
+}
+
+/** One weather station's January statistics, from the readings taken when trains were nearby. */
+export interface EmsWeather {
+  readings: number
+  slotShare: number | null
+  days: number
+  temp: { avg: number | null; min: number | null; minAt: string | null; max: number | null; maxAt: string | null }
+  snow: { max: number | null; maxAt: string | null; daysWithSnow: number }
+  gust: { max: number | null; maxAt: string | null }
+  visibility: { min: number | null; minAt: string | null }
+  /** [min, mean, max] air temperature per date, null on days with no readings. */
+  daily: ([number, number, number] | null)[]
+}
+
+export interface EmsWeatherFile {
+  dates: string[]
+  stations: Record<string, EmsWeather>
 }
 
 export interface StationBand {

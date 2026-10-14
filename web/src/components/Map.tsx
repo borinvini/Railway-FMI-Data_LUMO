@@ -8,8 +8,8 @@ import { delayColor, NETWORK_LINE_COLOR, NETWORK_LINE_CORE_COLOR, routeBadgeStep
 import { TOP_10_STATION_CODES } from '../lib/importantStations'
 import type { StationValue } from '../lib/routeStats'
 import { DEFAULT_VIEW, LEFT_PANEL_FRACTION, restyleBasemap } from '../lib/mapStyle'
-import { ROUTE_BADGE_ICON, STATION_MARKER_ICON, STATION_MARKER_OUTLINE_ICON } from '../lib/markerIcon'
-import type { ConnectionFeature, FinlandGeoJSON, RouteHighlight, StationFeature } from '../lib/types'
+import { ROUTE_BADGE_ICON, STATION_MARKER_ICON, STATION_MARKER_OUTLINE_ICON, WEATHER_STATION_ICON } from '../lib/markerIcon'
+import type { ConnectionFeature, FinlandGeoJSON, RouteHighlight, StationEms, StationFeature } from '../lib/types'
 
 // At the default zoom, only Finland's 10 biggest cities show a marker (see
 // lib/importantStations.ts); zooming in reveals progressively less prominent stations, ranked
@@ -57,6 +57,8 @@ interface MapProps {
   onDriftChange: (drifted: boolean) => void
   /** The first view finished loading its tiles (or a timeout passed): App fades out the veil. */
   onReady: () => void
+  /** The selected station's weather station marker was clicked: App opens its weather pop-up. */
+  onWeatherStationClick: () => void
 }
 
 /**
@@ -67,7 +69,7 @@ interface MapProps {
  * deck.gl are plain JS libraries here (no react-map-gl): the Map/overlay instances live in
  * refs and are created once in an effect, then kept in sync with props.
  */
-export default function MapView({ stations, connections, finland, selected, onSelect, routeHighlight, routeValues, onRouteClick, activeRoute, resetSignal, onDriftChange, onReady }: MapProps) {
+export default function MapView({ stations, connections, finland, selected, onSelect, routeHighlight, routeValues, onRouteClick, activeRoute, resetSignal, onDriftChange, onReady, onWeatherStationClick }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const overlayRef = useRef<MapboxOverlay | null>(null)
@@ -89,10 +91,16 @@ export default function MapView({ stations, connections, finland, selected, onSe
   // significance -- recomputed whenever the station list changes, not on every render.
   const rankRef = useRef<Map<string, number>>(new Map())
   const onDriftRef = useRef(onDriftChange)
+  const onWeatherClickRef = useRef(onWeatherStationClick)
+  const emsHoverRef = useRef(false)
+  // Set for one tick by a click on the weather station marker so the map's own click handler
+  // (which deselects on an empty-map click) does not clear the selection it belongs to.
+  const emsClickRef = useRef(false)
   const onReadyRef = useRef(onReady)
 
   onSelectRef.current = onSelect
   onDriftRef.current = onDriftChange
+  onWeatherClickRef.current = onWeatherStationClick
   onReadyRef.current = onReady
   routeValuesRef.current = routeValues
   onRouteClickRef.current = onRouteClick
@@ -110,6 +118,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
     const isRouteEnd = (d: StationFeature) => route !== null && (d.code === route.start || d.code === route.end)
     const isHovered = (d: StationFeature) => hovered?.code === d.code
     const touchesSelected = (d: ConnectionFeature) => sel !== null && (d.from === sel.code || d.to === sel.code)
+    const weatherStation = sel?.ems ?? null
 
     const revealT = Math.max(0, Math.min(1, (zoomRef.current - REVEAL_ZOOM_START) / (REVEAL_ZOOM_END - REVEAL_ZOOM_START)))
     const visibleCount = Math.round(TOP_10_STATION_CODES.length + (rankRef.current.size - TOP_10_STATION_CODES.length) * revealT)
@@ -145,7 +154,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
       // MapLibre's own canvas carries `cursor: grab`, which overrides the cursor deck.gl sets on
       // its container -- so set it on the MapLibre canvas directly.
       const canvas = mapRef.current?.getCanvas()
-      if (canvas) canvas.style.cursor = hoveredRef.current || routeHoverRef.current ? 'pointer' : ''
+      if (canvas) canvas.style.cursor = hoveredRef.current || routeHoverRef.current || emsHoverRef.current ? 'pointer' : ''
     }
     const stationHover = ({ object }: { object?: unknown }) => {
       hoveredRef.current = (object as StationFeature | undefined) ?? null
@@ -153,6 +162,15 @@ export default function MapView({ stations, connections, finland, selected, onSe
       overlayRef.current?.setProps({ layers: buildLayers() })
     }
     const stationClick = ({ object }: { object?: unknown }) => onSelectRef.current((object as StationFeature | undefined) ?? null)
+    const emsHover = ({ object }: { object?: unknown }) => {
+      emsHoverRef.current = object !== undefined && object !== null
+      setCursor()
+    }
+    const emsClick = () => {
+      emsClickRef.current = true
+      window.setTimeout(() => { emsClickRef.current = false }, 0)
+      onWeatherClickRef.current()
+    }
     const routeHover = ({ object }: { object?: unknown }) => {
       routeHoverRef.current = object !== undefined && object !== null
       setCursor()
@@ -302,6 +320,41 @@ export default function MapView({ stations, connections, finland, selected, onSe
         onClick: stationClick,
         updateTriggers: { getSize: [sel, hovered, revealT, route], getColor: [sel, hovered, route] },
       }),
+      // The selected station's weather station: a thin ice link from the pin, a navy map pin with a
+      // thermometer whose tip is the station's real location (no delay colour, see
+      // lib/markerIcon.ts) and its name. Only
+      // present while a station is selected. Flat overlay like the route badges, so it never
+      // z-fights with the lines; clickable, which opens its January weather pop-up.
+      new PathLayer<[number, number][]>({
+        id: 'ems-link', data: weatherStation && sel ? [[[sel.lon, sel.lat], [weatherStation.lon, weatherStation.lat]]] : [],
+        parameters: { depthCompare: 'always' },
+        getPath: (d) => d,
+        widthUnits: 'pixels', capRounded: true,
+        getWidth: 2,
+        getColor: [156, 195, 232, 190],
+      }),
+      new IconLayer<StationEms>({
+        id: 'ems-marker', data: weatherStation ? [weatherStation] : [], pickable: true,
+        parameters: { depthCompare: 'always' },
+        getPosition: (d) => [d.lon, d.lat],
+        getIcon: () => WEATHER_STATION_ICON,
+        sizeUnits: 'pixels', getSize: 44,
+        onHover: emsHover, onClick: emsClick,
+      }),
+      new TextLayer<StationEms>({
+        id: 'ems-label', data: weatherStation ? [weatherStation] : [],
+        parameters: { depthCompare: 'always' },
+        getPosition: (d) => [d.lon, d.lat],
+        getText: (d) => d.name,
+        getSize: 15, sizeUnits: 'pixels',
+        getColor: [234, 241, 248, 255],
+        // The pin's tip is the anchor, so the name sits just below it.
+        getPixelOffset: [0, 6],
+        getTextAnchor: 'middle', getAlignmentBaseline: 'top',
+        fontFamily: 'Barlow, system-ui, sans-serif', fontWeight: 500,
+        characterSet: 'auto',
+        outlineWidth: 3, outlineColor: [2, 6, 13, 255],
+      }),
     ]
   }
 
@@ -397,6 +450,10 @@ export default function MapView({ stations, connections, finland, selected, onSe
           let text: string
           if (layerId.startsWith('route-highlight')) {
             text = 'Click for route details'
+          } else if (layerId === 'ems-marker') {
+            // A weather station, not a train station: it has no `avgDelay`.
+            const ems = object as StationEms
+            text = `${ems.name} weather station\n${ems.km.toFixed(1)} km away\nClick for January weather`
           } else {
             const station = object as StationFeature
             if (layerId === 'route-badge-fill') {
@@ -427,7 +484,9 @@ export default function MapView({ stations, connections, finland, selected, onSe
       ;(window as unknown as { map: maplibregl.Map; overlay: MapboxOverlay }).map = map
       ;(window as unknown as { map: maplibregl.Map; overlay: MapboxOverlay }).overlay = overlay
 
-      map.on('click', () => { if (!hoveredRef.current && !routeHoverRef.current) onSelectRef.current(null) })
+      map.on('click', () => {
+        if (!hoveredRef.current && !routeHoverRef.current && !emsHoverRef.current && !emsClickRef.current) onSelectRef.current(null)
+      })
       onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') onSelectRef.current(null) }
       document.addEventListener('keydown', onKeyDown)
     })()
@@ -467,7 +526,23 @@ export default function MapView({ stations, connections, finland, selected, onSe
   // dropdown menu (StationSelect only lifts the selection to App; this is the one place
   // that knows about the map instance, so it owns the fly-to).
   useEffect(() => {
-    if (selected) mapRef.current?.flyTo({ center: [selected.lon, selected.lat], duration: 600 })
+    const map = mapRef.current
+    if (!selected || !map) return
+    const ems = selected.ems
+    if (!ems) {
+      map.flyTo({ center: [selected.lon, selected.lat], duration: 600 })
+      return
+    }
+    // Fit the station and its weather station together. At the default zoom a 10 km gap is about
+    // 8 px, so the marker would sit on top of the pin; maxZoom keeps a close pair from zooming in
+    // absurdly. Bearing and pitch are kept, like the route fit below.
+    map.fitBounds(
+      [
+        [Math.min(selected.lon, ems.lon), Math.min(selected.lat, ems.lat)],
+        [Math.max(selected.lon, ems.lon), Math.max(selected.lat, ems.lat)],
+      ],
+      { padding: { top: 140, bottom: 140, left: 80, right: 120 }, maxZoom: 8.5, bearing: map.getBearing(), pitch: map.getPitch(), duration: 600 },
+    )
   }, [selected])
 
   // A new set of highlighted routes starts the click-to-cycle order over.

@@ -19,6 +19,8 @@ function LateRow({ label, band }: { label: string; band: StationBand }) {
 interface StationPanelProps {
   station: StationFeature
   onClose: () => void
+  /** Open the January weather pop-up for this station's weather station. */
+  onShowWeather: () => void
 }
 
 /**
@@ -26,7 +28,7 @@ interface StationPanelProps {
  * every train that stops there, any route/train type -- see scripts/routes_lib.py
  * `station_summary`, not scoped to a single route.
  */
-export default function StationPanel({ station, onClose }: StationPanelProps) {
+export default function StationPanel({ station, onClose, onShowWeather }: StationPanelProps) {
   const label = (s: string) => s.replace(/ asema$/, '')
   const weather = station.weather
 
@@ -61,6 +63,21 @@ export default function StationPanel({ station, onClose }: StationPanelProps) {
         <span className="text-(--card-ink-2)">Cancelled</span>
         <span>{station.cancelledPct.toFixed(0)}%</span>
       </div>
+
+      {station.ems && (
+        <div className="mt-1 border-t border-(--card-line) pt-2.5 text-[15px] text-(--card-ink-2)">
+          <p className="m-0">
+            Weather station: {station.ems.name}, {station.ems.km.toFixed(1)} km away
+          </p>
+          <button
+            type="button"
+            onClick={onShowWeather}
+            className="mt-2 flex min-h-11 w-full cursor-pointer items-center justify-center rounded-lg border border-[rgba(0,47,108,0.25)] text-[15px] text-(--card-ink) hover:bg-[rgba(0,47,108,0.1)]"
+          >
+            See January weather
+          </button>
+        </div>
+      )}
 
       {weather && (
         <div className="mt-1 border-t border-(--card-line) pt-2.5 text-[15px] text-(--card-ink-2)">

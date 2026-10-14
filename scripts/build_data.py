@@ -47,6 +47,8 @@ CONNECTIONS_JSON = OUT_DIR / "connections.json"
 ROUTE_PATTERNS_JSON = OUT_DIR / "route_patterns.json"
 ROUTE_STATS_JSON = OUT_DIR / "route_stats.json"
 SUMMARY_JSON = OUT_DIR / "summary.json"
+EMS_WEATHER_JSON = OUT_DIR / "ems_weather.json"
+TOP5_CSV = ROOT / "data" / "raw" / "metadata_top5_closest_ems.csv"
 
 
 def _round_or_none(v, digits=2):
@@ -64,7 +66,79 @@ def _station_band(band) -> dict | None:
     return None if band is None else {"n": band["n"], "latePct": _round_or_none(band["latePct"], 1)}
 
 
-def build_stations_payload(stations, station_weather=None, station_means=None) -> list[dict]:
+def _haversine_km(lat1, lon1, lat2, lon2) -> float:
+    import math
+
+    p = math.pi / 180
+    a = math.sin((lat2 - lat1) * p / 2) ** 2 + math.cos(lat1 * p) * math.cos(lat2 * p) * math.sin(
+        (lon2 - lon1) * p / 2
+    ) ** 2
+    return 2 * 6371 * math.asin(math.sqrt(a))
+
+
+def build_station_ems(stations, top5, coords, labels, ems_stats) -> dict:
+    """Train station code -> the weather station to show on the map.
+
+    Rule: the top-5 file's rank 1 (the station the weather was matched from first). If that
+    name has no readings in the parquet, fall back to the station the parquet itself labelled
+    the weather with, and record the rank-1 name as `closest` so the pop-up can say so.
+    """
+    out = {}
+    passenger = stations[stations["passengerTraffic"] == True]  # noqa: E712
+    for _, row in passenger.iterrows():
+        code = row["code"]
+        ranked = top5.get(code, [])
+        rank1 = ranked[0] if ranked else None
+        shown = None
+        if rank1 and rank1["name"] in ems_stats:
+            shown = {"name": rank1["name"], "lat": rank1["lat"], "lon": rank1["lon"], "km": rank1["km"]}
+        else:
+            label = labels.get(code)
+            if label and label in coords and label in ems_stats:
+                lat, lon = coords[label]
+                known = next((e for e in ranked if e["name"] == label), None)
+                km = known["km"] if known else _haversine_km(row["lat"], row["lon"], lat, lon)
+                shown = {"name": label, "lat": lat, "lon": lon, "km": km}
+        if shown is None:
+            continue
+        shown["closest"] = (
+            {"name": rank1["name"], "km": _round_or_none(rank1["km"], 1)}
+            if rank1 and rank1["name"] != shown["name"]
+            else None
+        )
+        shown["lat"] = _round_or_none(shown["lat"], 5)
+        shown["lon"] = _round_or_none(shown["lon"], 5)
+        shown["km"] = _round_or_none(shown["km"], 1)
+        out[code] = shown
+    return out
+
+
+def build_ems_weather_payload(summary: dict) -> dict:
+    """Rounded, compact version of routes_lib.ems_weather_summary for the browser."""
+    r = _round_or_none
+
+    def day(d):
+        return None if d is None else [r(d[0], 1), r(d[1], 1), r(d[2], 1)]
+
+    stations = {}
+    for name, v in summary["stations"].items():
+        stations[name] = {
+            "readings": v["readings"],
+            "slotShare": r(v["slotShare"], 3),
+            "days": v["days"],
+            "temp": {
+                "avg": r(v["temp"]["avg"], 1), "min": r(v["temp"]["min"], 1), "minAt": v["temp"]["minAt"],
+                "max": r(v["temp"]["max"], 1), "maxAt": v["temp"]["maxAt"],
+            },
+            "snow": {"max": r(v["snow"]["max"], 0), "maxAt": v["snow"]["maxAt"], "daysWithSnow": v["snow"]["daysWithSnow"]},
+            "gust": {"max": r(v["gust"]["max"], 1), "maxAt": v["gust"]["maxAt"]},
+            "visibility": {"min": r(v["visibility"]["min"], 0), "minAt": v["visibility"]["minAt"]},
+            "daily": [day(d) for d in v["daily"]],
+        }
+    return {"dates": summary["dates"], "stations": stations}
+
+
+def build_stations_payload(stations, station_weather=None, station_means=None, station_ems=None) -> list[dict]:
     passenger = stations[stations["passengerTraffic"] == True]  # noqa: E712
     payload = []
     for _, row in passenger.iterrows():
@@ -94,6 +168,7 @@ def build_stations_payload(stations, station_weather=None, station_means=None) -
                 "distinctRoutes": int(row["distinctRoutes"]),
                 "cancelledPct": _round_or_none(row["cancelledPct"], 1),
                 "weather": entry,
+                "ems": (station_ems or {}).get(row["code"]),
             }
         )
     payload.sort(key=lambda s: s["name"])
@@ -296,7 +371,24 @@ def main() -> int:
         )
     )
 
-    stations_payload = build_stations_payload(stations, station_weather, station_means)
+    # Weather station per train station, and the January weather at each station.
+    top5 = routes_lib.load_ems_top5(TOP5_CSV)
+    ems_coords = routes_lib.ems_coordinates(top5, METADATA_CSV)
+    ems_summary = routes_lib.ems_weather_summary(events)
+    ems_labels = routes_lib.station_ems_label(events)
+    station_ems = build_station_ems(stations, top5, ems_coords, ems_labels, ems_summary["stations"])
+    n_passenger = int((stations["passengerTraffic"] == True).sum())  # noqa: E712
+    swapped = sum(1 for e in station_ems.values() if e["closest"])
+    print(
+        f"weather stations: {len(station_ems)} of {n_passenger} passenger stations have one "
+        f"({swapped} use the parquet's label because rank 1 has no readings); "
+        f"{len(ems_summary['stations'])} stations with readings"
+    )
+    unresolved = set(ems_summary["stations"]) - set(ems_coords)
+    if unresolved:
+        print(f"[build_data] weather station(s) without coordinates: {', '.join(sorted(unresolved))}")
+
+    stations_payload = build_stations_payload(stations, station_weather, station_means, station_ems)
     coords_by_code = build_coord_lookup(stations)
     connections_payload = build_connections_payload(edges, coords_by_code)
 
@@ -308,6 +400,10 @@ def main() -> int:
     summary_payload = build_summary_payload(events, runs, stations, pooled)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
+    EMS_WEATHER_JSON.write_text(
+        json.dumps(build_ems_weather_payload(ems_summary), ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8",
+    )
     SUMMARY_JSON.write_text(
         json.dumps(summary_payload, ensure_ascii=False, indent=None), encoding="utf-8"
     )
