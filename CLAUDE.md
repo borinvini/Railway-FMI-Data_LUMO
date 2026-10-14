@@ -63,7 +63,16 @@ request):
 | Label halo | `#02060d` (width 1.2) |
 | Outside-Finland dim | `#02060d` overlay, opacity `0.5` (`outsideDim`; `1.0` hides neighbours) |
 | UI surface | `rgba(6,16,31,.82)` + 1px `rgba(156,195,232,.14)` border, 10px radius, `backdrop-filter: blur(8px)` |
-| UI text / muted | `#eaf1f8` / `#8597ab`, weight 300, `system-ui` |
+| UI text / muted | `#eaf1f8` / `#8597ab`, Barlow 400 (weight 300 dropped: too faint from a distance) |
+| Light cards (search, route finder, station panel, route pop-up) | `.card` in `index.css`: `--card #bed0e4`, ink `--card-ink #002f6c` / `-2 #243f5e` / `-3 #3f5873`, line `--card-line`. One surface class, so radius/padding/shadow stay in step. Title card in the left column is a light card too. |
+| Type | **Barlow** (body/UI) + **Barlow Condensed** 500/600 (`font-board`: big numbers, titles, tabular figures), self-hosted via `@fontsource`, bundled by Vite. Body ≥ 15 px, tap targets ≥ 44 px. |
+
+**Left column** (`components/SideColumn.tsx`, `clamp(300px, 26vw, 400px)`, inside the 36% padding zone):
+`MonthSummary` (title + month numbers from `summary.json`) → `RouteFinder` → `StationSelect`.
+Legend and "Reset view" share one bottom-left row in `App.tsx`. App owns reset: it clears the
+selection/route and bumps `resetSignal`, which `Map.tsx` answers with `flyTo(DEFAULT_VIEW)`.
+**Kiosk behaviour:** a "Loading the map…" veil until the first `idle` (10 s fallback), and after
+90 s without input the page resets itself (`IDLE_RESET_MS` in `App.tsx`).
 
 A small SVG Finnish flag (`components/FinnishFlag.tsx`) sits in the title card.
 

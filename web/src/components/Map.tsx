@@ -3,7 +3,7 @@ import { IconLayer, PathLayer, TextLayer } from '@deck.gl/layers'
 import * as maplibregl from 'maplibre-gl'
 import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { delayColor, NETWORK_LINE_COLOR, NETWORK_LINE_CORE_COLOR, routeBadgeStep } from '../lib/colors'
 import { TOP_10_STATION_CODES } from '../lib/importantStations'
 import type { StationValue } from '../lib/routeStats'
@@ -51,8 +51,12 @@ interface MapProps {
   activeRoute: number | null
   /** Typical delay (minutes) at each station of the highlighted routes, for the badges. */
   routeValues: Map<string, StationValue>
-  /** The Reset view button was pressed: App clears the station and route selection. */
-  onReset: () => void
+  /** Bumped by App when Reset view is pressed (or the idle timer fires): fly back to DEFAULT_VIEW. */
+  resetSignal: number
+  /** The camera moved away from DEFAULT_VIEW (true) or came back (false): App shows Reset view. */
+  onDriftChange: (drifted: boolean) => void
+  /** The first view finished loading its tiles (or a timeout passed): App fades out the veil. */
+  onReady: () => void
 }
 
 /**
@@ -63,7 +67,7 @@ interface MapProps {
  * deck.gl are plain JS libraries here (no react-map-gl): the Map/overlay instances live in
  * refs and are created once in an effect, then kept in sync with props.
  */
-export default function MapView({ stations, connections, finland, selected, onSelect, routeHighlight, routeValues, onRouteClick, activeRoute, onReset }: MapProps) {
+export default function MapView({ stations, connections, finland, selected, onSelect, routeHighlight, routeValues, onRouteClick, activeRoute, resetSignal, onDriftChange, onReady }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const overlayRef = useRef<MapboxOverlay | null>(null)
@@ -84,9 +88,12 @@ export default function MapView({ stations, connections, finland, selected, onSe
   // the rest are ranked by `runs` (how often a train stops there), a proxy for network
   // significance -- recomputed whenever the station list changes, not on every render.
   const rankRef = useRef<Map<string, number>>(new Map())
-  const [resetShown, setResetShown] = useState(false)
+  const onDriftRef = useRef(onDriftChange)
+  const onReadyRef = useRef(onReady)
 
   onSelectRef.current = onSelect
+  onDriftRef.current = onDriftChange
+  onReadyRef.current = onReady
   routeValuesRef.current = routeValues
   onRouteClickRef.current = onRouteClick
   activeRouteRef.current = activeRoute
@@ -343,6 +350,11 @@ export default function MapView({ stations, connections, finland, selected, onSe
       applyPadding()
       map.on('resize', applyPadding)
 
+      // Fade the loading veil once the first view has its tiles; the timeout keeps a slow or
+      // failed tile request from leaving the veil up for good.
+      const readyTimer = window.setTimeout(() => onReadyRef.current(), 10000)
+      map.once('idle', () => { window.clearTimeout(readyTimer); onReadyRef.current() })
+
       map.on('error', (e: maplibregl.ErrorEvent & { sourceId?: string }) =>
         console.error('MAPERR', e.error?.message, e.sourceId ?? ''),
       )
@@ -360,7 +372,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
           Math.abs(map.getBearing() - DEFAULT_VIEW.bearing) > 1 ||
           Math.abs(map.getZoom() - DEFAULT_VIEW.zoom) > 0.3 ||
           Math.hypot(home.x - here.x, home.y - here.y) > 40
-        setResetShown(drifted)
+        onDriftRef.current(drifted)
       }
       map.on('rotate', updateResetVisibility)
       map.on('pitch', updateResetVisibility)
@@ -481,10 +493,10 @@ export default function MapView({ stations, connections, finland, selected, onSe
     }
   }, [routeHighlight])
 
-  function resetView() {
-    onReset()
-    mapRef.current?.flyTo({ ...DEFAULT_VIEW, duration: 600 })
-  }
+  // Reset view: App has already cleared the selection/route; this just flies the camera home.
+  useEffect(() => {
+    if (resetSignal > 0) mapRef.current?.flyTo({ ...DEFAULT_VIEW, duration: 600 })
+  }, [resetSignal])
 
   return (
     <>
@@ -496,19 +508,6 @@ export default function MapView({ stations, connections, finland, selected, onSe
         className="pointer-events-none absolute inset-x-0 top-0 h-[40%]"
         style={{ background: 'linear-gradient(to bottom, var(--bg), rgba(6,16,31,0))' }}
       />
-      <button
-        type="button"
-        onClick={resetView}
-        className={`absolute bottom-6 left-[270px] flex items-center gap-[7px] rounded-[10px] border border-(--line) bg-(--surface) px-[14px] py-[10px] text-[13px] text-(--muted) backdrop-blur-[8px] transition-opacity duration-150 hover:text-(--text) ${
-          (resetShown || selected !== null || routeHighlight !== null) ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
-        }`}
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-[14px] w-[14px]">
-          <path d="M3 12a9 9 0 1 0 3-6.7" />
-          <path d="M3 4v5h5" />
-        </svg>
-        Reset view
-      </button>
     </>
   )
 }

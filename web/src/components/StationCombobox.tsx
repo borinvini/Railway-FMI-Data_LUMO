@@ -83,7 +83,7 @@ export default function StationCombobox({
   return (
     <div>
       <div className="mb-1 flex items-center justify-between">
-        <label htmlFor={id} className="text-[13px] font-normal text-[#243f5e]">
+        <label htmlFor={id} className="text-[15px] font-medium text-(--card-ink-2)">
           {label}
         </label>
         {labelAction}
@@ -100,7 +100,7 @@ export default function StationCombobox({
           autoComplete="off"
           spellCheck={false}
           placeholder={placeholder}
-          className="w-[220px] rounded-md border border-[rgba(0,47,108,0.2)] bg-transparent px-2 py-1.5 text-sm text-(--flag-blue) outline-none placeholder:text-[#3f5873] focus:border-[rgba(0,47,108,0.5)]"
+          className="min-h-11 w-full rounded-lg border border-[rgba(0,47,108,0.25)] bg-[rgba(255,255,255,0.35)] px-3 py-2 text-base text-(--card-ink) placeholder:text-(--card-ink-3) focus:border-(--card-ink)"
           value={shown}
           onFocus={(e) => { setOpen(true); setQuery(''); setActive(0); e.currentTarget.select() }}
           onBlur={() => { setOpen(false); setQuery('') }}
@@ -112,9 +112,9 @@ export default function StationCombobox({
             ref={listRef}
             id={`${id}-list`}
             role="listbox"
-            className="absolute top-full left-0 z-10 mt-1 max-h-[260px] w-full overflow-y-auto rounded-md border border-[rgba(0,47,108,0.2)] bg-[#d6e2f0] py-1 text-sm shadow-[0_8px_24px_rgba(0,0,0,0.35)]"
+            className="absolute top-full left-0 z-10 mt-1 max-h-[300px] w-full overflow-y-auto rounded-lg border border-[rgba(0,47,108,0.25)] bg-[#d6e2f0] py-1 text-base shadow-[0_8px_24px_rgba(0,0,0,0.35)]"
           >
-            {matches.length === 0 && <li className="px-2 py-1.5 text-[#3f5873]">No station found</li>}
+            {matches.length === 0 && <li className="px-3 py-2.5 text-(--card-ink-3)">No station found</li>}
             {matches.map((s, i) => (
               <li
                 key={s.code}
@@ -123,7 +123,7 @@ export default function StationCombobox({
                 // mousedown (not click) so it fires before the input's blur closes the list.
                 onMouseDown={(e) => { e.preventDefault(); choose(s) }}
                 onMouseEnter={() => setActive(i)}
-                className={`cursor-pointer px-2 py-1.5 ${i === active ? 'bg-[rgba(0,47,108,0.14)]' : ''} ${s.code === value?.code ? 'font-medium' : ''}`}
+                className={`cursor-pointer px-3 py-2.5 ${i === active ? 'bg-[rgba(0,47,108,0.14)]' : ''} ${s.code === value?.code ? 'font-medium' : ''}`}
               >
                 {stationLabel(s.name)}
               </li>

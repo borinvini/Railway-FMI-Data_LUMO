@@ -10,6 +10,20 @@
   --muted: #8597ab;
   --ice: #9cc3e8;
   --flag-blue: #002f6c;
+
+  /* Light cards (station search, route finder, station panel, route pop-up). */
+  --card: #bed0e4;
+  --card-ink: #002f6c;
+  --card-ink-2: #243f5e;
+  --card-ink-3: #3f5873;
+  --card-line: rgba(0, 47, 108, 0.14);
+}
+
+/* Barlow (body) + Barlow Condensed (big numbers, titles): the railway-signage look. Both are
+   bundled by Vite from @fontsource, so no font request leaves the site. */
+@theme {
+  --font-sans: 'Barlow', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-board: 'Barlow Condensed', 'Barlow', system-ui, sans-serif;
 }
 
 html,
@@ -19,7 +33,40 @@ body,
   height: 100%;
   background: var(--bg);
   color: var(--text);
-  font: 300 15px/1.45 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font: 400 16px/1.45 var(--font-sans);
+}
+
+/* One light-card surface for every interactive panel, so radius/padding/shadow stay in step. */
+.card {
+  background: var(--card);
+  color: var(--card-ink);
+  border: 1px solid var(--card-line);
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+}
+
+.font-board {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+/* Keyboard focus must be visible against both the dark map and the light cards. */
+:focus-visible {
+  outline: 2px solid var(--ice);
+  outline-offset: 2px;
+}
+.card :focus-visible {
+  outline-color: var(--card-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
 }
 
 .maplibregl-ctrl-attrib {
@@ -30,7 +77,7 @@ body,
   color: #62778e !important;
 }
 .deck-tooltip {
-  font: 300 13px system-ui, sans-serif !important;
+  font: 400 15px var(--font-sans) !important;
 }
 .maplibregl-ctrl-top-right {
   top: 84px !important;

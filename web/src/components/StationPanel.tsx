@@ -14,34 +14,34 @@ export default function StationPanel({ station, onClose }: StationPanelProps) {
   const label = (s: string) => s.replace(/ asema$/, '')
 
   return (
-    <div className="absolute top-5 right-5 z-50 w-[290px] rounded-[10px] border border-[rgba(0,47,108,0.15)] bg-[rgba(190,208,228,0.97)] px-[18px] py-4 text-(--flag-blue) shadow-[0_8px_30px_rgba(0,0,0,0.35)]">
+    <div className="card absolute top-5 right-5 z-50 w-[300px]">
       <button
         type="button"
         onClick={onClose}
         aria-label="Close"
-        className="absolute top-[10px] right-[14px] cursor-pointer text-[#243f5e] hover:text-(--flag-blue)"
+        className="absolute top-1 right-1 flex h-11 w-11 cursor-pointer items-center justify-center text-lg text-(--card-ink-2) hover:text-(--card-ink)"
       >
         ✕
       </button>
-      <p className="mt-0 mb-0.5 text-lg font-light">{label(station.name)}</p>
-      <div className="mb-3.5 text-[13px] text-[#243f5e]">January 2020</div>
-      <div className="text-[40px] leading-none font-extralight">{station.avgDelay.toFixed(1)}</div>
-      <div className="my-0.5 mb-3.5 text-[13px] text-[#243f5e]">minutes late, on average</div>
+      <p className="font-board mt-0 mb-0.5 pr-8 text-[26px] leading-tight font-semibold">{label(station.name)}</p>
+      <div className="mb-3.5 text-[15px] text-(--card-ink-2)">January 2020</div>
+      <div className="font-board text-[56px] leading-none font-semibold">{station.avgDelay.toFixed(1)}</div>
+      <div className="my-1 mb-3.5 text-[15px] text-(--card-ink-2)">minutes late, on average</div>
 
-      <div className="flex justify-between border-t border-[rgba(0,47,108,0.12)] py-2 text-sm">
-        <span className="text-[#243f5e]">Arrived within 5 min</span>
+      <div className="flex justify-between border-t border-(--card-line) py-2 text-[15px]">
+        <span className="text-(--card-ink-2)">Arrived within 5 min</span>
         <span>{station.onTimePct.toFixed(0)}%</span>
       </div>
-      <div className="flex justify-between border-t border-[rgba(0,47,108,0.12)] py-2 text-sm">
-        <span className="text-[#243f5e]">Trains stopping here</span>
+      <div className="flex justify-between border-t border-(--card-line) py-2 text-[15px]">
+        <span className="text-(--card-ink-2)">Trains stopping here</span>
         <span>{station.runs}</span>
       </div>
-      <div className="flex justify-between border-t border-[rgba(0,47,108,0.12)] py-2 text-sm">
-        <span className="text-[#243f5e]">Routes served</span>
+      <div className="flex justify-between border-t border-(--card-line) py-2 text-[15px]">
+        <span className="text-(--card-ink-2)">Routes served</span>
         <span>{station.distinctRoutes}</span>
       </div>
-      <div className="flex justify-between border-t border-[rgba(0,47,108,0.12)] py-2 text-sm">
-        <span className="text-[#243f5e]">Cancelled</span>
+      <div className="flex justify-between border-t border-(--card-line) py-2 text-[15px]">
+        <span className="text-(--card-ink-2)">Cancelled</span>
         <span>{station.cancelledPct.toFixed(0)}%</span>
       </div>
     </div>

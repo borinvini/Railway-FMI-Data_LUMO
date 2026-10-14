@@ -14,7 +14,7 @@ interface StationSelectProps {
  */
 export default function StationSelect({ stations, selected, onSelect }: StationSelectProps) {
   return (
-    <div className="absolute top-[108px] left-5 z-40 rounded-[10px] border border-[rgba(0,47,108,0.15)] bg-[rgba(190,208,228,0.97)] px-[14px] py-2.5 text-(--flag-blue) shadow-[0_8px_30px_rgba(0,0,0,0.35)]">
+    <section className="card">
       <StationCombobox
         id="station-select"
         label="Jump to a station"
@@ -22,6 +22,6 @@ export default function StationSelect({ stations, selected, onSelect }: StationS
         value={selected}
         onChange={onSelect}
       />
-    </div>
+    </section>
   )
 }

@@ -90,3 +90,14 @@ export interface RouteStat {
   stops: [string, number, number | null, number | null][]
 }
 export type RouteStatsFile = Record<string, RouteStat>
+
+/** Month headline numbers for the landing card, see scripts/build_data.py `build_summary_payload`. */
+export interface SummaryFile {
+  firstDate: string | null
+  lastDate: string | null
+  trains: number
+  stations: number
+  onTimePct: number | null
+  typicalDelay: number | null
+  worstDay: { date: string; typicalDelay: number | null } | null
+}

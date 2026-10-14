@@ -81,23 +81,23 @@ export default function RouteDetails({ routes, active, onActive, startName, endN
         aria-modal="true"
         aria-labelledby="route-details-title"
         onClick={(e) => e.stopPropagation()}
-        className="relative max-h-[90vh] w-[min(860px,100%)] overflow-y-auto rounded-xl border border-[rgba(0,47,108,0.2)] bg-[rgb(190,208,228)] p-6 text-(--flag-blue) shadow-[0_20px_60px_rgba(0,0,0,0.5)]"
+        className="relative max-h-[90vh] card w-[min(860px,100%)] overflow-y-auto !rounded-xl !p-6 !shadow-[0_20px_60px_rgba(0,0,0,0.5)]"
       >
         <button
           type="button"
           onClick={onClose}
           aria-label="Close"
-          className="absolute top-3.5 right-4 cursor-pointer text-lg text-[#3f5873] hover:text-(--flag-blue)"
+          className="absolute top-2 right-2 flex h-11 w-11 cursor-pointer items-center justify-center text-lg text-(--card-ink-3) hover:text-(--card-ink)"
         >
           ✕
         </button>
 
-        <h2 id="route-details-title" className="m-0 text-xl font-normal">
+        <h2 id="route-details-title" className="font-board m-0 pr-10 text-[32px] leading-tight font-semibold">
           {startName} → {endName}
         </h2>
-        <div className="mt-0.5 text-[13px] text-[#243f5e]">
-          {routes.length > 1 ? `Route ${active + 1} of ${routes.length} · ` : ''}
-          {labels[active]} · {route.trains} trains in January
+        <div className="mt-0.5 text-[15px] text-(--card-ink-2)">
+          {routes.length > 1 ? `Route ${active + 1} of ${routes.length}: ` : ''}
+          {labels[active]}, {route.trains} trains in January
         </div>
 
         {routes.length > 1 && (
@@ -109,20 +109,20 @@ export default function RouteDetails({ routes, active, onActive, startName, endN
                 role="tab"
                 aria-selected={i === active}
                 onClick={() => onActive(i)}
-                className={`cursor-pointer rounded-full border px-3 py-1 text-[13px] ${
+                className={`cursor-pointer min-h-11 rounded-full border px-4 py-1 text-[15px] ${
                   i === active
-                    ? 'border-(--flag-blue) bg-(--flag-blue) text-white'
-                    : 'border-[rgba(0,47,108,0.3)] text-[#243f5e] hover:bg-[rgba(0,47,108,0.1)]'
+                    ? 'border-(--card-ink) bg-(--card-ink) text-white'
+                    : 'border-[rgba(0,47,108,0.3)] text-(--card-ink-2) hover:bg-[rgba(0,47,108,0.1)]'
                 }`}
               >
-                Route {i + 1} · {labels[i]} · {r.trains} trains
+                Route {i + 1}: {labels[i]}, {r.trains} trains
               </button>
             ))}
           </div>
         )}
 
         {!summary && (
-          <p className="mt-6 mb-2 text-sm text-[#243f5e]">
+          <p className="mt-6 mb-2 text-sm text-(--card-ink-2)">
             {loadFailed ? 'Could not load the statistics. Please try again.' : 'Loading statistics…'}
           </p>
         )}
@@ -136,27 +136,27 @@ export default function RouteDetails({ routes, active, onActive, startName, endN
               <Tile label="Cancelled" value={summary.cancelledPct === null ? '–' : `${summary.cancelledPct.toFixed(1)}%`} />
             </div>
 
-            <h3 className="mt-6 mb-1 text-[15px] font-medium">How late trains are at each stop</h3>
-            <p className="m-0 mb-2 text-[13px] text-[#243f5e]">
+            <h3 className="font-board mt-6 mb-1 text-[22px] font-semibold">How late trains are at each stop</h3>
+            <p className="m-0 mb-2 text-[15px] text-(--card-ink-2)">
               Typical minutes late when trains arrive at each stop, from {startName} to {endName}.
             </p>
             <StopChart stops={summary.stops.filter((s) => s.avg !== null)} />
             {/* The starting station never has arrivals, so it isn't counted as missing. */}
             {summary.stops.slice(1).some((s) => s.avg === null) && (
-              <p className="m-0 mt-1 text-xs text-[#3f5873]">
+              <p className="m-0 mt-1 text-sm text-(--card-ink-3)">
                 Showing {summary.stops.filter((s) => s.avg !== null).length} of {summary.stops.length} stops: the rest
                 have no saved figures, because these trains usually run a different way.
               </p>
             )}
             {summary.insights.map((line) => (
-              <p key={line} className="m-0 mt-1.5 text-[13px] text-(--flag-blue)">{line}</p>
+              <p key={line} className="m-0 mt-1.5 text-[15px] text-(--card-ink)">{line}</p>
             ))}
-            <details className="mt-2 text-[13px] text-[#243f5e]">
+            <details className="mt-2 text-[15px] text-(--card-ink-2)">
               <summary className="cursor-pointer">Show the stop-by-stop numbers</summary>
               <div className="mt-2 max-h-[200px] overflow-y-auto">
                 <table className="w-full border-collapse text-left">
                   <thead>
-                    <tr className="text-[#3f5873]">
+                    <tr className="text-(--card-ink-3)">
                       <th className="py-1 pr-3 font-normal">Stop</th>
                       <th className="py-1 pr-3 text-right font-normal">Typically late</th>
                       <th className="py-1 text-right font-normal">Trains</th>
@@ -164,7 +164,7 @@ export default function RouteDetails({ routes, active, onActive, startName, endN
                   </thead>
                   <tbody>
                     {summary.stops.map((s) => (
-                      <tr key={s.code} className="border-t border-[rgba(0,47,108,0.12)]">
+                      <tr key={s.code} className="border-t border-(--card-line)">
                         <td className="py-1 pr-3">{s.name}</td>
                         <td className="py-1 pr-3 text-right">{s.avg === null ? '–' : `${s.avg.toFixed(1)} min`}</td>
                         <td className="py-1 text-right">{s.trains || '–'}</td>
@@ -175,43 +175,62 @@ export default function RouteDetails({ routes, active, onActive, startName, endN
               </div>
             </details>
 
-            <h3 className="mt-6 mb-1 text-[15px] font-medium">How trains run</h3>
-            <p className="m-0 mb-2 text-[13px] text-[#243f5e]">
+            <h3 className="font-board mt-6 mb-1 text-[22px] font-semibold">How trains run</h3>
+            <p className="m-0 mb-2 text-[15px] text-(--card-ink-2)">
               Share of trains by how late they were on average along their journey.
             </p>
             <ArrivalSplit onTime={summary.onTimePct} minor={summary.minorPct} major={summary.majorPct} />
 
-            <h3 className="mt-6 mb-2 text-[15px] font-medium">Train services on this route</h3>
+            <h3 className="font-board mt-6 mb-2 text-[22px] font-semibold">Train services on this route</h3>
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-left text-[13px]">
+              <table className="w-full border-collapse text-left text-[15px]">
                 <thead>
-                  <tr className="text-[#3f5873]">
+                  <tr className="text-(--card-ink-3)">
                     <th className="py-1 pr-3 font-normal">Train</th>
                     <th className="py-1 pr-3 font-normal">Journey</th>
                     <th className="py-1 pr-3 text-right font-normal">Trains</th>
                     <th className="py-1 pr-3 text-right font-normal">Typically late</th>
-                    <th className="py-1 pr-3 text-right font-normal">On time</th>
-                    <th className="py-1 pr-3 text-right font-normal">Worst 10% late by</th>
+                    <th className="py-1 text-right font-normal">On time</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.services.map((s) => (
+                    <tr key={s.id} className="border-t border-(--card-line)">
+                      <td className="py-1.5 pr-3 font-medium">{s.type}</td>
+                      <td className="py-1.5 pr-3">{s.journey}</td>
+                      <td className="py-1.5 pr-3 text-right">{s.trains}</td>
+                      <td className="py-1.5 pr-3 text-right">{s.avg === null ? '–' : `${s.avg.toFixed(1)} min`}</td>
+                      <td className="py-1.5 text-right">{s.onTime === null ? '–' : `${s.onTime.toFixed(0)}%`}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <details className="mt-2 text-[15px] text-(--card-ink-2)">
+              <summary className="min-h-11 cursor-pointer py-2">More numbers</summary>
+              <table className="w-full border-collapse text-left">
+                <thead>
+                  <tr className="text-(--card-ink-3)">
+                    <th className="py-1 pr-3 font-normal">Train</th>
+                    <th className="py-1 pr-3 font-normal">Journey</th>
+                    <th className="py-1 pr-3 text-right font-normal">Worst 10% of trips late by</th>
                     <th className="py-1 text-right font-normal">Cancelled</th>
                   </tr>
                 </thead>
                 <tbody>
                   {summary.services.map((s) => (
-                    <tr key={s.id} className="border-t border-[rgba(0,47,108,0.12)]">
+                    <tr key={s.id} className="border-t border-(--card-line)">
                       <td className="py-1.5 pr-3 font-medium">{s.type}</td>
                       <td className="py-1.5 pr-3">{s.journey}</td>
-                      <td className="py-1.5 pr-3 text-right">{s.trains}</td>
-                      <td className="py-1.5 pr-3 text-right">{s.avg === null ? '–' : `${s.avg.toFixed(1)} min`}</td>
-                      <td className="py-1.5 pr-3 text-right">{s.onTime === null ? '–' : `${s.onTime.toFixed(0)}%`}</td>
                       <td className="py-1.5 pr-3 text-right">{s.p90 === null ? '–' : `${s.p90.toFixed(1)} min`}</td>
                       <td className="py-1.5 text-right">{s.cancelled === null ? '–' : `${s.cancelled.toFixed(1)}%`}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            </div>
+            </details>
 
-            <p className="m-0 mt-4 text-xs text-[#3f5873]">
+            <p className="m-0 mt-4 text-sm text-(--card-ink-3)">
               January 2020. Headline numbers and the table cover the whole journeys of the trains that
               run this route, which may start before or continue past it; the stop-by-stop figures use
               each stop&apos;s own arrivals.
@@ -227,15 +246,15 @@ export default function RouteDetails({ routes, active, onActive, startName, endN
 function Tile({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-[rgba(0,47,108,0.15)] bg-[rgba(255,255,255,0.35)] px-3 py-2.5">
-      <div className="text-[26px] leading-none font-light">{value}</div>
-      <div className="mt-1.5 text-xs text-[#243f5e]">{label}</div>
+      <div className="font-board text-[40px] leading-none font-semibold">{value}</div>
+      <div className="mt-1.5 text-sm text-(--card-ink-2)">{label}</div>
     </div>
   )
 }
 
 /** One stacked bar: on time / a bit late / very late, each segment labelled in text. */
 function ArrivalSplit({ onTime, minor, major }: { onTime: number | null; minor: number | null; major: number | null }) {
-  if (onTime === null || minor === null || major === null) return <p className="m-0 text-[13px]">No arrival data.</p>
+  if (onTime === null || minor === null || major === null) return <p className="m-0 text-[15px]">No arrival data.</p>
   const parts = [
     { label: 'On time (up to 5 min late)', value: onTime, color: BLUE, text: 'text-white' },
     { label: 'A bit late (5–15 min)', value: minor, color: AMBER, text: 'text-[#2b1b00]' },
@@ -248,13 +267,13 @@ function ArrivalSplit({ onTime, minor, major }: { onTime: number | null; minor: 
           <div
             key={p.label}
             style={{ width: `${p.value}%`, background: p.color }}
-            className={`flex items-center justify-center text-xs font-medium ${p.text}`}
+            className={`flex items-center justify-center text-sm font-medium ${p.text}`}
           >
             {p.value >= 7 ? `${p.value.toFixed(0)}%` : ''}
           </div>
         ))}
       </div>
-      <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[13px] text-(--flag-blue)">
+      <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[15px] text-(--card-ink)">
         {parts.map((p) => (
           <span key={p.label} className="flex items-center gap-1.5">
             <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: p.color }} />
@@ -315,7 +334,7 @@ function StopChart({ stops }: { stops: StopPoint[] }) {
           x: {
             grid: { display: false },
             ticks: {
-              autoSkip: false, minRotation: 50, maxRotation: 50, color: INK, font: { size: 11 },
+              autoSkip: false, minRotation: 50, maxRotation: 50, color: INK, font: { size: 13, family: 'Barlow, system-ui, sans-serif' },
               callback: (_value, index) => (showTick(index) ? stops[index].name : ''),
             },
           },

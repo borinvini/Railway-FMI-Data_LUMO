@@ -1,0 +1,1 @@
+{"firstDate": "2020-01-01", "lastDate": "2020-01-31", "trains": 7710, "stations": 190, "onTimePct": 88.1, "typicalDelay": 2.7, "worstDay": {"date": "2020-01-05", "typicalDelay": 4.5}}

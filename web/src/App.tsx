@@ -1,16 +1,19 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import MapView from './components/Map'
-import FinnishFlag from './components/FinnishFlag'
 import Legend from './components/Legend'
+import MonthSummary from './components/MonthSummary'
 import RouteDetails from './components/RouteDetails'
 import RouteFinder from './components/RouteFinder'
+import SideColumn from './components/SideColumn'
 import StationPanel from './components/StationPanel'
 import StationSelect from './components/StationSelect'
 import { findRoutes, pickRandomRoute, toHighlight } from './lib/routeFinder'
 import { routeStationValues, type StationValue } from './lib/routeStats'
-import type { ConnectionFeature, FinlandGeoJSON, RoutePattern, RouteStatsFile, StationFeature } from './lib/types'
+import type { ConnectionFeature, FinlandGeoJSON, RoutePattern, RouteStatsFile, StationFeature, SummaryFile } from './lib/types'
 
 const NO_VALUES = new Map<string, StationValue>()
+// A kiosk left alone this long goes back to the start view (see the idle effect in App).
+const IDLE_RESET_MS = 90_000
 
 export default function App() {
   const [stations, setStations] = useState<StationFeature[]>([])
@@ -25,6 +28,11 @@ export default function App() {
   // route_stats.json is loaded lazily, the first time a route's details are opened.
   const [routeStats, setRouteStats] = useState<RouteStatsFile | null>(null)
   const [statsFailed, setStatsFailed] = useState(false)
+  const [summary, setSummary] = useState<SummaryFile | null>(null)
+  // Reset view: App clears the selection, Map flies home when `resetSignal` changes.
+  const [resetSignal, setResetSignal] = useState(0)
+  const [drifted, setDrifted] = useState(false)
+  const [mapReady, setMapReady] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -33,12 +41,15 @@ export default function App() {
       fetch('data/connections.json').then((r) => r.json() as Promise<ConnectionFeature[]>),
       fetch('data/finland.geojson').then((r) => r.json() as Promise<FinlandGeoJSON>),
       fetch('data/route_patterns.json').then((r) => r.json() as Promise<RoutePattern[]>),
-    ]).then(([stationsData, connectionsData, finlandData, patternsData]) => {
+      // The month numbers are nice-to-have: a missing summary.json must not block the map.
+      fetch('data/summary.json').then((r) => r.json() as Promise<SummaryFile>).catch(() => null),
+    ]).then(([stationsData, connectionsData, finlandData, patternsData, summaryData]) => {
       if (cancelled) return
       setStations(stationsData)
       setConnections(connectionsData)
       setFinland(finlandData)
       setPatterns(patternsData)
+      setSummary(summaryData)
     })
     return () => { cancelled = true }
   }, [])
@@ -87,6 +98,34 @@ export default function App() {
     return routeStationValues(routeResult.paths, routeStats, names)
   }, [routeResult, routeStats, stations])
 
+  const resetAll = useCallback(() => {
+    setSelected(null)
+    setRouteStart(null)
+    setRouteEnd(null)
+    setDetailIndex(null)
+    setResetSignal((n) => n + 1)
+  }, [])
+
+  // Unattended kiosk: after IDLE_RESET_MS without a touch, mouse move or key press, go home.
+  const resetAllRef = useRef(resetAll)
+  resetAllRef.current = resetAll
+  useEffect(() => {
+    let timer = window.setTimeout(fire, IDLE_RESET_MS)
+    function fire() { resetAllRef.current() }
+    function poke() {
+      window.clearTimeout(timer)
+      timer = window.setTimeout(fire, IDLE_RESET_MS)
+    }
+    const events = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart'] as const
+    for (const e of events) window.addEventListener(e, poke, { passive: true })
+    return () => {
+      window.clearTimeout(timer)
+      for (const e of events) window.removeEventListener(e, poke)
+    }
+  }, [])
+
+  const showReset = drifted || selected !== null || routeHighlight !== null
+
   return (
     <div className="relative h-screen w-screen overflow-hidden">
       <MapView
@@ -99,41 +138,54 @@ export default function App() {
         routeValues={routeValues}
         onRouteClick={setDetailIndex}
         activeRoute={detailIndex}
-        onReset={() => { setSelected(null); setRouteStart(null); setRouteEnd(null); setDetailIndex(null) }}
+        resetSignal={resetSignal}
+        onDriftChange={setDrifted}
+        onReady={() => setMapReady(true)}
       />
 
-      <div className="absolute top-5 left-5 flex items-center gap-3.5 rounded-[10px] border border-(--line) bg-(--surface) px-[18px] py-4 backdrop-blur-[8px]">
-        <FinnishFlag className="h-[26px] w-auto shrink-0 rounded-[2px] ring-1 ring-(--line)" />
-        <div>
-          <h1 className="m-0 text-lg font-light tracking-wide">Finnish long-distance trains · January 2020</h1>
-          <p className="mt-0.5 mb-0 text-[13px] text-(--muted)">Click a station to see how late long-distance trains run</p>
-        </div>
+      <SideColumn>
+        <MonthSummary summary={summary} />
+        <RouteFinder
+          stations={stations}
+          start={routeStart}
+          end={routeEnd}
+          result={routeResult}
+          onStart={setRouteStart}
+          onEnd={setRouteEnd}
+          onSwap={() => { setRouteStart(routeEnd); setRouteEnd(routeStart) }}
+          onRandom={() => {
+            const pick = pickRandomRoute(
+              patterns,
+              new Map(stations.map((s) => [s.code, { lat: s.lat, lon: s.lon }])),
+              routeStart && routeEnd ? { start: routeStart.code, end: routeEnd.code } : null,
+            )
+            if (!pick) return
+            setRouteStart(stations.find((s) => s.code === pick.start) ?? null)
+            setRouteEnd(stations.find((s) => s.code === pick.end) ?? null)
+          }}
+          onClear={() => { setRouteStart(null); setRouteEnd(null) }}
+        />
+        <StationSelect stations={stations} selected={selected} onSelect={setSelected} />
+      </SideColumn>
+
+      {/* Legend and Reset view share one row, so the button never overlaps the legend. */}
+      <div className="pointer-events-none absolute bottom-6 left-5 z-30 flex items-end gap-3">
+        <Legend routeMode={routeHighlight !== null} />
+        <button
+          type="button"
+          onClick={resetAll}
+          className={`flex min-h-11 items-center gap-2 rounded-[10px] border border-(--line) bg-(--surface) px-4 text-[15px] text-(--muted) backdrop-blur-[8px] transition-opacity duration-150 hover:text-(--text) ${
+            showReset ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
+          }`}
+          tabIndex={showReset ? 0 : -1}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+            <path d="M3 12a9 9 0 1 0 3-6.7" />
+            <path d="M3 4v5h5" />
+          </svg>
+          Reset view
+        </button>
       </div>
-
-      <StationSelect stations={stations} selected={selected} onSelect={setSelected} />
-
-      <RouteFinder
-        stations={stations}
-        start={routeStart}
-        end={routeEnd}
-        result={routeResult}
-        onStart={setRouteStart}
-        onEnd={setRouteEnd}
-        onSwap={() => { setRouteStart(routeEnd); setRouteEnd(routeStart) }}
-        onRandom={() => {
-          const pick = pickRandomRoute(
-            patterns,
-            new Map(stations.map((s) => [s.code, { lat: s.lat, lon: s.lon }])),
-            routeStart && routeEnd ? { start: routeStart.code, end: routeEnd.code } : null,
-          )
-          if (!pick) return
-          setRouteStart(stations.find((s) => s.code === pick.start) ?? null)
-          setRouteEnd(stations.find((s) => s.code === pick.end) ?? null)
-        }}
-        onClear={() => { setRouteStart(null); setRouteEnd(null) }}
-      />
-
-      <Legend routeMode={routeHighlight !== null} />
 
       {routeResult && routeStart && routeEnd && detailIndex !== null && (
         <RouteDetails
@@ -150,6 +202,16 @@ export default function App() {
       )}
 
       {selected && <StationPanel station={selected} onClose={() => setSelected(null)} />}
+
+      {/* Until the first tiles arrive the basemap is flat navy, which reads as broken. */}
+      <div
+        aria-hidden={mapReady}
+        className={`pointer-events-none absolute inset-0 z-[70] flex items-center justify-center bg-(--bg) transition-opacity duration-300 ${
+          mapReady ? 'opacity-0' : 'opacity-100'
+        }`}
+      >
+        <p className="font-board m-0 text-2xl font-medium text-(--muted)">Loading the map…</p>
+      </div>
     </div>
   )
 }

@@ -46,6 +46,7 @@ STATIONS_JSON = OUT_DIR / "stations.json"
 CONNECTIONS_JSON = OUT_DIR / "connections.json"
 ROUTE_PATTERNS_JSON = OUT_DIR / "route_patterns.json"
 ROUTE_STATS_JSON = OUT_DIR / "route_stats.json"
+SUMMARY_JSON = OUT_DIR / "summary.json"
 
 
 def _round_or_none(v, digits=2):
@@ -164,6 +165,30 @@ def build_route_stats_payload(routes) -> dict:
     return payload
 
 
+def build_summary_payload(events, runs, stations) -> dict:
+    """Headline numbers for the landing card. Delay = ARRIVAL rows, early arrivals clamped
+    to 0 (CLAUDE.md convention); "on time" = <= ON_TIME_THRESHOLD_MIN, same as everywhere else."""
+    arrivals = events[events["type"] == "ARRIVAL"].dropna(subset=["differenceInMinutes"])
+    delay = arrivals["differenceInMinutes"].clip(lower=0)
+    day = arrivals["departureDate"].astype(str).str.slice(0, 10)
+    by_day = delay.groupby(day).mean()
+    worst_date = by_day.idxmax() if len(by_day) else None
+    dates = sorted(day.unique())
+    return {
+        "firstDate": dates[0] if dates else None,
+        "lastDate": dates[-1] if dates else None,
+        "trains": int(len(runs)),
+        "stations": int((stations["passengerTraffic"] == True).sum()),  # noqa: E712
+        "onTimePct": _round_or_none((delay <= routes_lib.ON_TIME_THRESHOLD_MIN).mean() * 100, 1),
+        "typicalDelay": _round_or_none(delay.mean(), 1),
+        "worstDay": (
+            {"date": worst_date, "typicalDelay": _round_or_none(by_day[worst_date], 1)}
+            if worst_date is not None
+            else None
+        ),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--parquet", help="Path to a specific parquet file instead of auto-discovery")
@@ -204,8 +229,12 @@ def main() -> int:
         runs, by=("from", "to", "trainType"), station_meta=station_meta, events=events
     )
     route_stats_payload = build_route_stats_payload(service_routes)
+    summary_payload = build_summary_payload(events, runs, stations)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
+    SUMMARY_JSON.write_text(
+        json.dumps(summary_payload, ensure_ascii=False, indent=None), encoding="utf-8"
+    )
     STATIONS_JSON.write_text(
         json.dumps(stations_payload, ensure_ascii=False, indent=None), encoding="utf-8"
     )
@@ -237,6 +266,7 @@ def main() -> int:
         f"wrote {len(route_patterns_payload)} route patterns -> "
         f"{ROUTE_PATTERNS_JSON.relative_to(ROOT)}"
     )
+    print(f"wrote month summary -> {SUMMARY_JSON.relative_to(ROOT)}: {summary_payload}")
 
     return 0
 
