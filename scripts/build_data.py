@@ -53,10 +53,34 @@ def _round_or_none(v, digits=2):
     return None if v is None or v != v else round(float(v), digits)  # v != v catches NaN
 
 
-def build_stations_payload(stations) -> list[dict]:
+def _band_cell(band) -> list | None:
+    """[arrivals, mean delay, % late] for one weather band, or None when suppressed."""
+    if band is None:
+        return None
+    return [band["n"], _round_or_none(band["avg"], 2), _round_or_none(band["latePct"], 1)]
+
+
+def _station_band(band) -> dict | None:
+    return None if band is None else {"n": band["n"], "latePct": _round_or_none(band["latePct"], 1)}
+
+
+def build_stations_payload(stations, station_weather=None, station_means=None) -> list[dict]:
     passenger = stations[stations["passengerTraffic"] == True]  # noqa: E712
     payload = []
     for _, row in passenger.iterrows():
+        entry = None
+        if station_weather is not None:
+            bands = station_weather.get((row["code"],))
+            means = station_means.loc[row["code"]] if row["code"] in station_means.index else None
+            if bands is not None and means is not None:
+                entry = {
+                    "avgTemp": _round_or_none(means["avgTemp"], 1),
+                    "avgSnow": _round_or_none(means["avgSnow"], 1),
+                    "frost": _station_band(bands["t"][0]),
+                    "mild": _station_band(bands["t"][2]),
+                    "snow": _station_band(bands["s"][2]),
+                    "noSnow": _station_band(bands["s"][0]),
+                }
         payload.append(
             {
                 "code": row["code"],
@@ -69,6 +93,7 @@ def build_stations_payload(stations) -> list[dict]:
                 "appearances": int(row["appearances"]),
                 "distinctRoutes": int(row["distinctRoutes"]),
                 "cancelledPct": _round_or_none(row["cancelledPct"], 1),
+                "weather": entry,
             }
         )
     payload.sort(key=lambda s: s["name"])
@@ -132,7 +157,7 @@ def build_route_patterns_payload(runs) -> list[dict]:
     return payload
 
 
-def build_route_stats_payload(routes) -> dict:
+def build_route_stats_payload(routes, service_weather=None) -> dict:
     """id (`<from>-<to>-<trainType>`) -> that service's headline delay stats and a
     compact per-stop list `[code, trains, avgDelay, onTimePct]` along its typical
     passenger stops. Same numbers as routes_index.csv (same aggregate() call)."""
@@ -147,6 +172,7 @@ def build_route_stats_payload(routes) -> dict:
             ]
             for stop in json.loads(row["stops"])
         ]
+        bands = (service_weather or {}).get((row["from"], row["to"], row["trainType"]))
         payload[row["id"]] = {
             "from": row["from"],
             "to": row["to"],
@@ -161,11 +187,16 @@ def build_route_stats_payload(routes) -> dict:
             "major": _round_or_none(row["pctMajorDelay"], 1),
             "cancelled": _round_or_none(row["cancelledPct"], 1),
             "stops": stops,
+            # Weather bands of this service's own arrivals: [arrivals, mean delay, % late] per
+            # band (temperature: frost / around freezing / mild; snow: none / a little / deep).
+            "w": None
+            if bands is None
+            else {k: [_band_cell(b) for b in bands[k]] for k in ("t", "s")},
         }
     return payload
 
 
-def build_summary_payload(events, runs, stations) -> dict:
+def build_summary_payload(events, runs, stations, pooled=None) -> dict:
     """Headline numbers for the landing card. Delay = ARRIVAL rows, early arrivals clamped
     to 0 (CLAUDE.md convention); "on time" = <= ON_TIME_THRESHOLD_MIN, same as everywhere else."""
     arrivals = events[events["type"] == "ARRIVAL"].dropna(subset=["differenceInMinutes"])
@@ -186,6 +217,32 @@ def build_summary_payload(events, runs, stations) -> dict:
             if worst_date is not None
             else None
         ),
+        "weather": None if pooled is None else build_weather_summary(pooled),
+    }
+
+
+def build_weather_summary(pooled: dict) -> dict:
+    """Band definitions (labels and edges, so the UI never hard-codes a threshold) and the
+    pooled same-station comparison behind the landing card."""
+    def pair(p):
+        if p is None:
+            return None
+        return {
+            "harshLatePct": _round_or_none(p["harshLatePct"], 1),
+            "benignLatePct": _round_or_none(p["benignLatePct"], 1),
+            "harshAvg": _round_or_none(p["harshAvg"], 2),
+            "benignAvg": _round_or_none(p["benignAvg"], 2),
+            "stations": p["stations"],
+            "worseAt": p["worseAt"],
+        }
+
+    return {
+        "minArrivals": routes_lib.MIN_WEATHER_ARRIVALS,
+        "bands": {
+            k: {"labels": v["labels"], "edges": v["edges"]}
+            for k, v in routes_lib.WEATHER_BANDS.items()
+        },
+        "compare": {"temp": pair(pooled.get("temp")), "snow": pair(pooled.get("snow"))},
     }
 
 
@@ -220,7 +277,26 @@ def main() -> int:
     if missing:
         print(f"[build_data] {len(missing)} station(s) without coordinates: {', '.join(missing)}")
 
-    stations_payload = build_stations_payload(stations)
+    # Weather bands: per station (panel + pooled headline) and per train service (pop-up).
+    station_arrivals = routes_lib.weather_arrivals(events, runs, by=())
+    station_weather = routes_lib.weather_band_stats(station_arrivals, ["stationShortCode"])
+    station_means = routes_lib.station_weather_means(station_arrivals)
+    pooled = routes_lib.pooled_same_station(station_weather)
+    service_arrivals = routes_lib.weather_arrivals(events, runs, by=("from", "to", "trainType"))
+    service_weather = routes_lib.weather_band_stats(service_arrivals, ["from", "to", "trainType"])
+    missing_weather = 1 - service_arrivals["band_t"].ge(0).mean()
+    print(
+        f"weather: {len(station_arrivals):,} arrivals, {missing_weather:.1%} without a "
+        f"temperature reading; pooled comparison: "
+        + ", ".join(
+            f"{k} {v['harshLatePct']:.1f}% vs {v['benignLatePct']:.1f}% late "
+            f"({v['stations']} stations, worse at {v['worseAt']})"
+            for k, v in pooled.items()
+            if v
+        )
+    )
+
+    stations_payload = build_stations_payload(stations, station_weather, station_means)
     coords_by_code = build_coord_lookup(stations)
     connections_payload = build_connections_payload(edges, coords_by_code)
 
@@ -228,8 +304,8 @@ def main() -> int:
     service_routes = routes_lib.aggregate(
         runs, by=("from", "to", "trainType"), station_meta=station_meta, events=events
     )
-    route_stats_payload = build_route_stats_payload(service_routes)
-    summary_payload = build_summary_payload(events, runs, stations)
+    route_stats_payload = build_route_stats_payload(service_routes, service_weather)
+    summary_payload = build_summary_payload(events, runs, stations, pooled)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     SUMMARY_JSON.write_text(

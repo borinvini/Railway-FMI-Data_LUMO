@@ -1,5 +1,5 @@
 import { distanceKm } from './routeFinder'
-import type { RoutePath, RouteStatsFile } from './types'
+import type { RoutePath, RouteStatsFile, WeatherCell } from './types'
 
 export interface ServiceRow {
   id: string
@@ -34,6 +34,15 @@ export interface RouteSummary {
   /** Services on this route that have no saved statistics (should be none). */
   missingServices: number
   insights: string[]
+  /** Arrivals by weather band, pooled over the route's services; null per band when empty. */
+  weather: { t: (WeatherRow | null)[]; s: (WeatherRow | null)[] }
+}
+
+export interface WeatherRow {
+  /** Arrivals in this band, mean minutes late, and the share more than 5 min late. */
+  n: number
+  avg: number
+  latePct: number
 }
 
 const stripAsema = (s: string) => s.replace(/ asema$/, '')
@@ -111,6 +120,23 @@ export function summarizeRoute(
     stops,
     missingServices: path.sources.length - found.length,
     insights: stopInsights(stops),
+    weather: {
+      t: [0, 1, 2].map((band) => poolWeather(found.map((f) => f.stat.w?.t[band] ?? null))),
+      s: [0, 1, 2].map((band) => poolWeather(found.map((f) => f.stat.w?.s[band] ?? null))),
+    },
+  }
+}
+
+/** Pool one band across services: weight by arrivals, which pools means and percentages
+ *  exactly. Bands the build already suppressed (null) simply don't contribute. */
+function poolWeather(cells: (WeatherCell | null)[]): WeatherRow | null {
+  const real = cells.filter((c): c is WeatherCell => c !== null)
+  const n = real.reduce((sum, c) => sum + c[0], 0)
+  if (n === 0) return null
+  return {
+    n,
+    avg: real.reduce((sum, c) => sum + c[1] * c[0], 0) / n,
+    latePct: real.reduce((sum, c) => sum + c[2] * c[0], 0) / n,
   }
 }
 

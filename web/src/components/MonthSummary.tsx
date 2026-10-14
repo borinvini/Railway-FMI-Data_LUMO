@@ -3,22 +3,26 @@ import FinnishFlag from './FinnishFlag'
 
 const monthYear = (iso: string) =>
   new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })
-const dayMonth = (iso: string) =>
-  new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' })
 
 /**
  * Title card at the top of the left column: what this page is, the month's two headline numbers
- * (set like a departure board) and the one-line hint on how to use it. Numbers come from
- * summary.json; until it loads the card still shows the title.
+ * (set like a departure board) and how much later trains ran in frost and snow. The weather
+ * figures are compared within the same stations (see routes_lib.pooled_same_station), so it is
+ * not just "the north is colder". Numbers come from summary.json; until it loads the card
+ * still shows the title.
  */
 export default function MonthSummary({ summary }: { summary: SummaryFile | null }) {
+  const temp = summary?.weather?.compare.temp ?? null
+  const snow = summary?.weather?.compare.snow ?? null
   return (
     <header className="card">
       <div className="flex items-center gap-3">
         <FinnishFlag className="h-7 w-auto shrink-0 rounded-[2px] ring-1 ring-(--card-line)" />
         <div>
           <h1 className="font-board m-0 text-[26px] leading-tight font-semibold">Long-distance trains in Finland</h1>
-          <p className="m-0 text-[15px] text-(--card-ink-2)">{summary?.firstDate ? monthYear(summary.firstDate) : 'January 2020'}</p>
+          <p className="m-0 text-[15px] text-(--card-ink-2)">
+            {summary?.firstDate ? monthYear(summary.firstDate) : 'January 2020'}. Tap any station on the map.
+          </p>
         </div>
       </div>
 
@@ -36,18 +40,33 @@ export default function MonthSummary({ summary }: { summary: SummaryFile | null 
               <dt className="mt-1 text-[15px] text-(--card-ink-2)">on time (up to 5 min late)</dt>
             </div>
           </dl>
-          {summary.worstDay && (
-            <p className="m-0 mt-3 text-[15px] text-(--card-ink-2)">
-              Worst day: {dayMonth(summary.worstDay.date)}
-              {summary.worstDay.typicalDelay !== null && `, trains typically ${summary.worstDay.typicalDelay.toFixed(1)} min late`}
-            </p>
+          {temp && snow && (
+            <div className="mt-3 border-t border-(--card-line) pt-3">
+              <p className="m-0 text-[15px] text-(--card-ink-2)">Trains more than 5 min late</p>
+              <dl className="m-0 mt-1.5 grid grid-cols-2 gap-x-4 gap-y-2">
+                <Pair value={temp.harshLatePct} label="in frost" />
+                <Pair value={temp.benignLatePct} label="in mild weather" />
+                <Pair value={snow.harshLatePct} label="with deep snow" />
+                <Pair value={snow.benignLatePct} label="with no snow" />
+              </dl>
+              <p className="m-0 mt-1.5 text-sm text-(--card-ink-3)">
+                Compared at the same stations, one January.
+              </p>
+            </div>
           )}
         </>
       )}
 
-      <p className="m-0 mt-3 border-t border-(--card-line) pt-3 text-[15px] text-(--card-ink-3)">
-        Tap a station on the map, or pick two stations below to see the trains between them.
-      </p>
     </header>
+  )
+}
+
+/** One weather figure, board numerals over a plain-words label. */
+function Pair({ value, label }: { value: number; label: string }) {
+  return (
+    <div className="flex items-baseline gap-2">
+      <dd className="font-board m-0 text-[28px] leading-none font-semibold">{value.toFixed(0)}%</dd>
+      <dt className="text-[15px] text-(--card-ink-2)">{label}</dt>
+    </div>
   )
 }

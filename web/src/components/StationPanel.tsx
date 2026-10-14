@@ -1,4 +1,20 @@
-import type { StationFeature } from '../lib/types'
+import type { StationBand, StationFeature } from '../lib/types'
+
+// Round first: a mean of -0.4 is "0°C", not "−0°C".
+const formatTemp = (t: number) => {
+  const r = Math.round(t)
+  return `${r < 0 ? '−' : ''}${Math.abs(r)}°C`
+}
+
+/** "Late in frost  25%": the share of this station's arrivals more than 5 min late in a band. */
+function LateRow({ label, band }: { label: string; band: StationBand }) {
+  return (
+    <div className="flex justify-between py-0.5">
+      <span>{label}</span>
+      <span className="font-board text-lg font-semibold text-(--card-ink)">{band.latePct.toFixed(0)}%</span>
+    </div>
+  )
+}
 
 interface StationPanelProps {
   station: StationFeature
@@ -12,6 +28,7 @@ interface StationPanelProps {
  */
 export default function StationPanel({ station, onClose }: StationPanelProps) {
   const label = (s: string) => s.replace(/ asema$/, '')
+  const weather = station.weather
 
   return (
     <div className="card absolute top-5 right-5 z-50 w-[300px]">
@@ -44,6 +61,29 @@ export default function StationPanel({ station, onClose }: StationPanelProps) {
         <span className="text-(--card-ink-2)">Cancelled</span>
         <span>{station.cancelledPct.toFixed(0)}%</span>
       </div>
+
+      {weather && (
+        <div className="mt-1 border-t border-(--card-line) pt-2.5 text-[15px] text-(--card-ink-2)">
+          {weather.avgTemp !== null && (
+            <p className="m-0 mb-1.5">
+              January weather here: {formatTemp(weather.avgTemp)} on average
+              {weather.avgSnow !== null && (weather.avgSnow >= 0.5 ? `, ${weather.avgSnow.toFixed(0)} cm of snow` : ', no snow')}.
+            </p>
+          )}
+          {weather.frost && weather.mild && (
+            <>
+              <LateRow label="Late in frost" band={weather.frost} />
+              <LateRow label="Late in mild weather" band={weather.mild} />
+            </>
+          )}
+          {weather.snow && weather.noSnow && (
+            <>
+              <LateRow label="Late with 10+ cm of snow" band={weather.snow} />
+              <LateRow label="Late with no snow" band={weather.noSnow} />
+            </>
+          )}
+        </div>
+      )}
     </div>
   )
 }

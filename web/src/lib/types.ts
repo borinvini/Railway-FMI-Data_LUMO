@@ -24,6 +24,24 @@ export interface StationFeature {
   appearances: number
   distinctRoutes: number
   cancelledPct: number
+  /** Weather at this station in January (null if no readings). Each band is the share of
+   *  arrivals more than 5 min late, or null when fewer than 30 arrivals fell in it. */
+  weather: StationWeather | null
+}
+
+export interface StationBand {
+  n: number
+  latePct: number
+}
+
+export interface StationWeather {
+  /** Mean air temperature (°C) and mean snow depth (cm) at arrival times. */
+  avgTemp: number | null
+  avgSnow: number | null
+  frost: StationBand | null
+  mild: StationBand | null
+  snow: StationBand | null
+  noSnow: StationBand | null
 }
 
 /** One physical segment between two directly-adjacent passenger stations
@@ -88,7 +106,12 @@ export interface RouteStat {
   major: number | null
   cancelled: number | null
   stops: [string, number, number | null, number | null][]
+  /** This service's arrivals by weather band: [arrivals, mean minutes late, % late] per band, null
+   *  where the band had too few arrivals. `t` = frost / around freezing / mild; `s` = no snow /
+   *  a little / deep. null when the service has no weather readings. */
+  w: { t: (WeatherCell | null)[]; s: (WeatherCell | null)[] } | null
 }
+export type WeatherCell = [number, number, number]
 export type RouteStatsFile = Record<string, RouteStat>
 
 /** Month headline numbers for the landing card, see scripts/build_data.py `build_summary_payload`. */
@@ -100,4 +123,26 @@ export interface SummaryFile {
   onTimePct: number | null
   typicalDelay: number | null
   worstDay: { date: string; typicalDelay: number | null } | null
+  weather: WeatherSummary | null
+}
+
+/** One weather group's pooled same-station comparison (see routes_lib.pooled_same_station). */
+export interface WeatherCompare {
+  harshLatePct: number
+  benignLatePct: number
+  harshAvg: number
+  benignAvg: number
+  stations: number
+  worseAt: number
+}
+
+export interface WeatherBands {
+  labels: string[]
+  edges: number[]
+}
+
+export interface WeatherSummary {
+  minArrivals: number
+  bands: { t: WeatherBands; s: WeatherBands }
+  compare: { temp: WeatherCompare | null; snow: WeatherCompare | null }
 }

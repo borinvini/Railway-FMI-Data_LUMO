@@ -86,7 +86,7 @@ export default function RouteFinder({ stations, start, end, result, onStart, onE
               {result.byType.map((t) => (
                 <li key={t.type} className="flex items-baseline justify-between gap-3 py-0.5">
                   <span>
-                    <span className="font-board mr-1.5 text-lg font-semibold text-(--card-ink)">{t.type}</span>
+                    <span className="font-board mr-1.5 text-lg font-semibold text-(--card-ink)">{t.type}</span>{' '}
                     {trainTypeName(t.type)}
                   </span>
                   <span className="shrink-0">{t.trains} trains</span>

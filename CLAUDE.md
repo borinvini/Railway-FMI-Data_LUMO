@@ -356,6 +356,28 @@ averages shown to visitors. Do not expose the `_offset` variants.
 
 Keep total payload to a few hundred KB; lazy-load `route_detail` on click.
 
+## Weather (frost and snow only)
+
+Weather is attached per event from the FMI station nearest the train station (median 11 km, 99%
+within 42 km). The site uses **air temperature** and **snow depth** at arrival time, nothing else:
+
+- **Wind is deliberately left out.** It runs the wrong way here (calm, cold nights are the late
+  ones: windy was better at 85 of 86 stations), so showing it would mislead.
+- Precipitation intensity is non-monotonic; **`Precipitation amount` is 86% empty**: never use it.
+- Snow depth is whole cm; `-1` and `0` both mean no snow.
+- Bands (`routes_lib.WEATHER_BANDS`, shipped in `summary.json` so the UI never hard-codes them):
+  frost <= -5°C / around freezing / mild > 2°C; no snow / 1-9 cm / 10 cm or more. "Late" = more
+  than 5 min late. A band with < 30 arrivals is suppressed (`null`), never shown as a number.
+- The landing headline is compared **within the same station** (`pooled_same_station`, stations
+  with >= 50 arrivals in both groups) because the north is colder and runs different trains. With
+  floor 50 it is 21% vs 14% late (frost vs mild) and 24% vs 13% (deep snow vs none); floor 60 gives
+  23% vs 15%. Same story, so state the finding, not a false precision.
+- **Wording is descriptive, never causal.** January 2020 was mild (70% of arrivals above 0°C, 0.9%
+  at -10°C or colder), and the gap shrinks once time of day is controlled. Footnotes say so.
+- Where it shows: landing card (`MonthSummary`), route pop-up "Delay and weather"
+  (`RouteDetails` + `WeatherBars`), station panel. Data: `summary.json.weather`,
+  `route_stats.json[id].w`, `stations.json[].weather`.
+
 ## Conventions
 
 - `scripts/routes_lib.py` is the **only** module that reads the parquet (fastparquet,

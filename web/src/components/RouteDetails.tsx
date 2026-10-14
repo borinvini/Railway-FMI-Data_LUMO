@@ -1,8 +1,9 @@
 import { BarController, BarElement, CategoryScale, Chart, LinearScale, Tooltip } from 'chart.js'
 import { useEffect, useMemo, useRef } from 'react'
 import { trainTypeName } from '../lib/trainTypes'
-import { summarizeRoute, viaLabel, type StationInfo, type StopPoint } from '../lib/routeStats'
-import type { RoutePath, RouteStatsFile, StationFeature } from '../lib/types'
+import { summarizeRoute, viaLabel, type RouteSummary, type StationInfo, type StopPoint } from '../lib/routeStats'
+import type { RoutePath, RouteStatsFile, StationFeature, WeatherSummary } from '../lib/types'
+import WeatherBars from './WeatherBars'
 
 Chart.register(BarController, BarElement, CategoryScale, LinearScale, Tooltip)
 
@@ -26,6 +27,8 @@ interface RouteDetailsProps {
   /** null while route_stats.json is still loading. */
   stats: RouteStatsFile | null
   loadFailed: boolean
+  /** Band labels from summary.json; null until it has loaded (the weather section is then skipped). */
+  weatherBands: WeatherSummary['bands'] | null
   onClose: () => void
 }
 
@@ -37,7 +40,7 @@ const stripAsema = (s: string) => s.replace(/ asema$/, '')
  * late, and a table of the train services that run the route. When several routes are
  * highlighted, tabs switch between them.
  */
-export default function RouteDetails({ routes, active, onActive, startName, endName, stations, stats, loadFailed, onClose }: RouteDetailsProps) {
+export default function RouteDetails({ routes, active, onActive, startName, endName, stations, stats, loadFailed, weatherBands, onClose }: RouteDetailsProps) {
   const info = useMemo(
     () => new Map<string, StationInfo>(stations.map((s) => [s.code, { name: stripAsema(s.name), runs: s.runs, lat: s.lat, lon: s.lon }])),
     [stations],
@@ -182,6 +185,8 @@ export default function RouteDetails({ routes, active, onActive, startName, endN
             </p>
             <ArrivalSplit onTime={summary.onTimePct} minor={summary.minorPct} major={summary.majorPct} />
 
+            {weatherBands && <WeatherSection weather={summary.weather} bands={weatherBands} />}
+
             <h3 className="font-board mt-6 mb-2 text-[22px] font-semibold">Train services on this route</h3>
             <div className="overflow-x-auto">
               <table className="w-full border-collapse text-left text-[15px]">
@@ -197,7 +202,7 @@ export default function RouteDetails({ routes, active, onActive, startName, endN
                 <tbody>
                   {summary.services.map((s) => (
                     <tr key={s.id} className="border-t border-(--card-line)">
-                      <td className="py-1.5 pr-3"><span className="font-board mr-1.5 text-lg font-semibold">{s.type}</span>{trainTypeName(s.type)}</td>
+                      <td className="py-1.5 pr-3"><span className="font-board mr-1.5 text-lg font-semibold">{s.type}</span>{' '}{trainTypeName(s.type)}</td>
                       <td className="py-1.5 pr-3">{s.journey}</td>
                       <td className="py-1.5 pr-3 text-right">{s.trains}</td>
                       <td className="py-1.5 pr-3 text-right">{s.avg === null ? '–' : `${s.avg.toFixed(1)} min`}</td>
@@ -221,7 +226,7 @@ export default function RouteDetails({ routes, active, onActive, startName, endN
                 <tbody>
                   {summary.services.map((s) => (
                     <tr key={s.id} className="border-t border-(--card-line)">
-                      <td className="py-1.5 pr-3"><span className="font-board mr-1.5 text-lg font-semibold">{s.type}</span>{trainTypeName(s.type)}</td>
+                      <td className="py-1.5 pr-3"><span className="font-board mr-1.5 text-lg font-semibold">{s.type}</span>{' '}{trainTypeName(s.type)}</td>
                       <td className="py-1.5 pr-3">{s.journey}</td>
                       <td className="py-1.5 pr-3 text-right">{s.p90 === null ? '–' : `${s.p90.toFixed(1)} min`}</td>
                       <td className="py-1.5 text-right">{s.cancelled === null ? '–' : `${s.cancelled.toFixed(1)}%`}</td>
@@ -241,6 +246,42 @@ export default function RouteDetails({ routes, active, onActive, startName, endN
         )}
       </div>
     </div>
+  )
+}
+
+/** "Delay and weather": share of arrivals more than 5 min late by temperature and by snow depth,
+ *  for this route's own trains. A group needs two usable bands to be a comparison at all. */
+function WeatherSection({ weather, bands }: { weather: RouteSummary['weather']; bands: WeatherSummary['bands'] }) {
+  const groups = [
+    { title: 'Late by temperature', labels: bands.t.labels, rows: weather.t },
+    { title: 'Late by snow on the ground', labels: bands.s.labels, rows: weather.s },
+  ].filter((g) => g.rows.filter((r) => r !== null).length >= 2)
+  const scaleMax = Math.max(10, ...groups.flatMap((g) => g.rows.map((r) => r?.latePct ?? 0)))
+
+  return (
+    <>
+      <h3 className="font-board mt-6 mb-1 text-[22px] font-semibold">Delay and weather</h3>
+      {groups.length === 0 ? (
+        <p className="m-0 text-[15px] text-(--card-ink-2)">
+          There was no frost or snow worth comparing along this route in January.
+        </p>
+      ) : (
+        <>
+          <p className="m-0 mb-3 text-[15px] text-(--card-ink-2)">
+            Share of this route&apos;s arrivals that were more than 5 minutes late, by the weather when the train arrived.
+          </p>
+          <div className="grid gap-x-8 gap-y-5 sm:grid-cols-2">
+            {groups.map((g) => (
+              <WeatherBars key={g.title} title={g.title} labels={g.labels} rows={g.rows} scaleMax={scaleMax} />
+            ))}
+          </div>
+          <p className="m-0 mt-3 text-sm text-(--card-ink-3)">
+            Weather is from the nearest weather station. This is one January, and frost and snow come with other
+            things, such as winter nights, so it shows what happened, not exactly why.
+          </p>
+        </>
+      )}
+    </>
   )
 }
 

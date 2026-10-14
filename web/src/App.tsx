@@ -168,8 +168,10 @@ export default function App() {
         <StationSelect stations={stations} selected={selected} onSelect={setSelected} />
       </SideColumn>
 
-      {/* Legend and Reset view share one row, so the button never overlaps the legend. */}
-      <div className="pointer-events-none absolute bottom-6 left-5 z-30 flex items-end gap-3">
+      {/* Legend and Reset view share one row, so the button never overlaps the legend. The row
+          starts to the right of the left column (not under it): the column can be tall, and the
+          legend grows when a route is shown. */}
+      <div className="pointer-events-none absolute bottom-6 left-[calc(clamp(300px,26vw,400px)+40px)] z-30 flex items-end gap-3">
         <Legend routeMode={routeHighlight !== null} />
         <button
           type="button"
@@ -197,6 +199,7 @@ export default function App() {
           stations={stations}
           stats={routeStats}
           loadFailed={statsFailed}
+          weatherBands={summary?.weather?.bands ?? null}
           onClose={() => setDetailIndex(null)}
         />
       )}

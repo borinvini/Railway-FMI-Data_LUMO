@@ -30,6 +30,9 @@ COLUMNS = [
     "scheduledTime",
     "differenceInMinutes",
     "cancelled",
+    # Weather at the nearest FMI station when the event happened (see weather_arrivals).
+    "Air temperature",
+    "Snow depth",
 ]
 
 # "On time" threshold used throughout the project (CLAUDE.md delay convention).
@@ -39,6 +42,28 @@ ON_TIME_THRESHOLD_MIN = 5
 #   minor delay: >  ON_TIME_THRESHOLD_MIN  and <= MINOR_DELAY_THRESHOLD_MIN
 #   major delay: >  MINOR_DELAY_THRESHOLD_MIN
 MINOR_DELAY_THRESHOLD_MIN = 15
+
+# Weather bands shown on the site. Only temperature and snow depth: wind runs the *wrong way*
+# in this data (calm, cold nights are the late ones), precipitation is non-monotonic, and
+# "Precipitation amount" is 86% empty -- see CLAUDE.md "Weather". Edges are right-inclusive
+# (value <= edge goes in the lower band). Snow depth is whole cm, and -1 / 0 both mean none,
+# so "<= 0" is "no snow" and "> 9" is "10 cm or more".
+WEATHER_BANDS = {
+    "t": {
+        "column": "Air temperature",
+        "edges": [-5.0, 2.0],
+        "labels": ["Frost (-5°C or colder)", "Around freezing (-5 to 2°C)", "Mild (above 2°C)"],
+    },
+    "s": {
+        "column": "Snow depth",
+        "edges": [0.0, 9.0],
+        "labels": ["No snow", "A little snow (1-9 cm)", "Deep snow (10 cm or more)"],
+    },
+}
+# A band with fewer arrivals than this is never shown as a number.
+MIN_WEATHER_ARRIVALS = 30
+# Stations need this many arrivals in *both* groups to enter the pooled same-station comparison.
+MIN_POOLED_ARRIVALS = 50
 
 
 def find_parquets(explicit: str | None = None) -> list[Path]:
@@ -603,6 +628,99 @@ def station_summary(
     ]
     out = out[ordered_cols]
     return out.sort_values("appearances", ascending=False).reset_index(drop=True)
+
+
+def weather_arrivals(events: pd.DataFrame, runs: pd.DataFrame, by=()) -> pd.DataFrame:
+    """ARRIVAL events with a usable delay, tagged with their weather bands.
+
+    Same filter and `runKey` merge as `station_level_stats`, so a station's weather numbers
+    cover exactly the arrivals its delay numbers do. Adds `late` (> ON_TIME_THRESHOLD_MIN,
+    the complement of "on time"), `clampedDelay`, and one band index per entry of
+    WEATHER_BANDS (`band_t`, `band_s`; -1 where the reading is missing). Weather is the
+    reading of the FMI station closest to the train station, at the time of the event.
+    """
+    by = list(by)
+    arrivals = events[events["type"] == "ARRIVAL"].dropna(subset=["differenceInMinutes"]).copy()
+    arrivals["clampedDelay"] = arrivals["differenceInMinutes"].clip(lower=0)
+    arrivals["late"] = arrivals["differenceInMinutes"] > ON_TIME_THRESHOLD_MIN
+    arrivals["runKey"] = (
+        arrivals["departureDate"].astype(str) + "_" + arrivals["trainNumber"].astype(str)
+    )
+    arrivals = arrivals.drop(columns=[c for c in by if c in arrivals.columns])
+    route_of_run = runs[["runKey"] + by].drop_duplicates("runKey")
+    arrivals = arrivals.merge(route_of_run, on="runKey", how="inner")
+
+    for key, spec in WEATHER_BANDS.items():
+        values = arrivals[spec["column"]]
+        band = np.searchsorted(spec["edges"], values.to_numpy(dtype=float), side="left")
+        arrivals[f"band_{key}"] = np.where(values.isna(), -1, band)
+    return arrivals
+
+
+def weather_band_stats(arrivals: pd.DataFrame, group_cols: list[str]) -> dict:
+    """{group key tuple: {"t": [band stats x3], "s": [band stats x3]}}, where a band's stats
+    are `{"n", "avg", "latePct"}` (clamped mean delay, % late) or None below
+    MIN_WEATHER_ARRIVALS. A group key is a 1-tuple for a single group column."""
+    out: dict = {}
+    for key, spec in WEATHER_BANDS.items():
+        tagged = arrivals[arrivals[f"band_{key}"] >= 0]
+        grouped = tagged.groupby(group_cols + [f"band_{key}"], sort=False).agg(
+            n=("clampedDelay", "size"), avg=("clampedDelay", "mean"), late=("late", "mean")
+        )
+        for idx, row in grouped.iterrows():
+            *gkey, band = idx
+            gkey = tuple(gkey)
+            slot = out.setdefault(gkey, {k: [None] * len(v["labels"]) for k, v in WEATHER_BANDS.items()})
+            if row["n"] >= MIN_WEATHER_ARRIVALS:
+                slot[key][int(band)] = {
+                    "n": int(row["n"]),
+                    "avg": float(row["avg"]),
+                    "latePct": float(row["late"] * 100),
+                }
+    return out
+
+
+def station_weather_means(arrivals: pd.DataFrame) -> pd.DataFrame:
+    """Per station: mean air temperature and mean snow depth (negative readings = 0)."""
+    snow = arrivals["Snow depth"].clip(lower=0)
+    frame = pd.DataFrame(
+        {"stationShortCode": arrivals["stationShortCode"], "temp": arrivals["Air temperature"], "snow": snow}
+    )
+    return frame.groupby("stationShortCode").agg(avgTemp=("temp", "mean"), avgSnow=("snow", "mean"))
+
+
+def pooled_same_station(station_stats: dict) -> dict:
+    """The headline comparison, made *within* each station so geography (the north is colder
+    and runs different trains) can't produce it: for every station with at least
+    MIN_POOLED_ARRIVALS arrivals in both groups, take the % late in the harsh band and in the
+    benign band, then average over stations weighted by the smaller group.
+
+    `station_stats` is `weather_band_stats(arrivals, ["stationShortCode"])` (bands under
+    MIN_WEATHER_ARRIVALS are already None; the stricter pooled floor is applied here).
+    Returns {"temp": ..., "snow": ...}: for each, the weighted % late and mean delay in the
+    harsh band (frost / deep snow) and the benign one (mild / no snow), how many stations
+    qualified, and at how many the harsh band was the later one.
+    """
+    result: dict = {}
+    for name, key, harsh, benign in (("temp", "t", 0, 2), ("snow", "s", 2, 0)):
+        rows = []
+        for stats in station_stats.values():
+            h, b = stats[key][harsh], stats[key][benign]
+            if h and b and h["n"] >= MIN_POOLED_ARRIVALS and b["n"] >= MIN_POOLED_ARRIVALS:
+                rows.append((min(h["n"], b["n"]), h["latePct"], b["latePct"], h["avg"], b["avg"]))
+        if not rows:
+            result[name] = None
+            continue
+        w = np.array([r[0] for r in rows], dtype=float)
+        result[name] = {
+            "harshLatePct": float(np.average([r[1] for r in rows], weights=w)),
+            "benignLatePct": float(np.average([r[2] for r in rows], weights=w)),
+            "harshAvg": float(np.average([r[3] for r in rows], weights=w)),
+            "benignAvg": float(np.average([r[4] for r in rows], weights=w)),
+            "stations": len(rows),
+            "worseAt": int(sum(1 for r in rows if r[1] > r[2])),
+        }
+    return result
 
 
 def station_coverage_warning(events: pd.DataFrame, metadata_csv: Path) -> tuple[int, int, list[str]]:
