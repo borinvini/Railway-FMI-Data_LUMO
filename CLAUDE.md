@@ -396,8 +396,9 @@ copy says "weather station", never "EMS".
 - **Numbers are readings taken when trains were nearby**, not a continuous record, so min and max
   are "at train times" and the pop-up says so. One reading per station per 10-minute slot
   (79% of rows are duplicates). Days are departure dates. Under 100 readings, no numbers shown.
-- **Weather pins carry numbers** (navy teardrop, tip on the real location, temperature over snow
-  depth written in the head, Barlow Condensed): neutral on purpose, because colour on this map
+- **Weather pins carry numbers** (teardrop, tip on the real location, head split in two: **navy
+  upper half = temperature in white, ice-blue lower half = snow depth in navy**, Barlow
+  Condensed; split height `WS_SPLIT_Y` in `markerIcon.ts`): neutral on purpose, because colour on this map
   means delay only. **Route mode** shows one pin per distinct weather station serving the route's
   passenger stops, with the temperature and snow depth *when this route's own trains were at those
   stops* (mean over arrivals and departures: weather ignores which, and a start station has no

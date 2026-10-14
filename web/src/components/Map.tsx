@@ -258,9 +258,10 @@ export default function MapView({ stations, connections, finland, selected, onSe
         parameters: { depthCompare: 'always' },
         getPosition: (d) => [d.ems.lon, d.ems.lat],
         getText: (d) => formatSnow(d.snow),
-        getSize: 14, sizeUnits: 'pixels',
-        getColor: [156, 195, 232, 255],
-        getPixelOffset: [0, -(WEATHER_PIN_HEAD_UP - 10)],
+        getSize: 15, sizeUnits: 'pixels',
+        // Navy on the pin's ice-blue lower half (see lib/markerIcon.ts).
+        getColor: [6, 16, 31, 255],
+        getPixelOffset: [0, -(WEATHER_PIN_HEAD_UP - 11)],
         getTextAnchor: 'middle', getAlignmentBaseline: 'center',
         fontFamily: WEATHER_FONT, fontWeight: 600,
         characterSet: '0123456789 cm',
