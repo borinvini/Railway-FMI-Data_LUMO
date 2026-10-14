@@ -405,6 +405,10 @@ copy says "weather station", never "EMS".
   arrivals; pooled by reading count). Grey outline = the route's trains had no figure, the
   station's January average is shown. A selected station shows its January average. The pop-up
   adds a line tying a route pin's number to its January tiles.
+- **Route legend shows samples of the real markers** (`Legend.tsx`): a badge in each of the three
+  colours with an example number (1.4 / 3.2 / 7.6), "No figure", and one weather pin sample. The
+  grey ring on delay badges and the grey outline on weather pins are deliberately not explained in
+  the legend.
 - **Link lines** (thin lemon yellow, `EMS_LINK` in `Map.tsx`; greener than the delay amber so they
   are not read as delay; under pins and badges) join each pin to the train stations matched to
   it: in route mode the route's stations it serves; for a selected station every station sharing
