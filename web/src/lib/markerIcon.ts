@@ -103,3 +103,25 @@ const weatherPinIcon = (accent: string) =>
 
 export const WEATHER_PIN_ICON = weatherPinIcon('#9cc3e8')
 export const WEATHER_PIN_GREY_ICON = weatherPinIcon('#8597ab')
+
+// The "Live" train: a white disc with a navy train-front glyph, centred. Full colour, no delay
+// colour (colour on this map is reserved for delay).
+const TRAIN_SIZE = 64
+
+const liveTrainSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${TRAIN_SIZE}" height="${TRAIN_SIZE}" viewBox="0 0 64 64">
+  <circle cx="32" cy="32" r="29" fill="#ffffff" stroke="#06101f" stroke-width="4"/>
+  <rect x="19" y="15" width="26" height="29" rx="6" fill="#06101f"/>
+  <rect x="23" y="19" width="18" height="11" rx="2.5" fill="#ffffff"/>
+  <circle cx="26" cy="37" r="2.6" fill="#ffffff"/>
+  <circle cx="38" cy="37" r="2.6" fill="#ffffff"/>
+  <path d="M23 48l-4 6M41 48l4 6" stroke="#06101f" stroke-width="4" stroke-linecap="round"/>
+</svg>`
+
+export const LIVE_TRAIN_ICON = {
+  url: `data:image/svg+xml;utf8,${encodeURIComponent(liveTrainSvg)}`,
+  width: TRAIN_SIZE,
+  height: TRAIN_SIZE,
+  anchorX: TRAIN_SIZE / 2,
+  anchorY: TRAIN_SIZE / 2,
+  mask: false,
+} as const

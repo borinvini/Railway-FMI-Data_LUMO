@@ -1,5 +1,5 @@
 import { MapboxOverlay } from '@deck.gl/mapbox'
-import { IconLayer, PathLayer, TextLayer } from '@deck.gl/layers'
+import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers'
 import * as maplibregl from 'maplibre-gl'
 import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec'
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -8,7 +8,8 @@ import { delayColor, NETWORK_LINE_COLOR, NETWORK_LINE_CORE_COLOR, routeBadgeStep
 import { TOP_10_STATION_CODES } from '../lib/importantStations'
 import type { StationValue } from '../lib/routeStats'
 import { DEFAULT_VIEW, LEFT_PANEL_FRACTION, restyleBasemap } from '../lib/mapStyle'
-import { ROUTE_BADGE_ICON, STATION_MARKER_ICON, STATION_MARKER_OUTLINE_ICON, WEATHER_PIN_GREY_ICON, WEATHER_PIN_ICON } from '../lib/markerIcon'
+import { LIVE_TRAIN_ICON, ROUTE_BADGE_ICON, STATION_MARKER_ICON, STATION_MARKER_OUTLINE_ICON, WEATHER_PIN_GREY_ICON, WEATHER_PIN_ICON } from '../lib/markerIcon'
+import { LIVE, reachedCodes, sample, trailPath, type LiveSample, type LiveTimeline } from '../lib/liveTrain'
 import { formatSnow, formatTemp } from '../lib/weatherFormat'
 import type { ConnectionFeature, FinlandGeoJSON, RouteHighlight, StationFeature, WeatherPin } from '../lib/types'
 
@@ -63,6 +64,30 @@ maplibregl.setWorkerUrl(`${import.meta.env.BASE_URL}maplibre/maplibre-gl-worker.
 
 const BASEMAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/dark'
 
+/** Fit the camera to the whole route, keeping the visitor's tilt and rotation (fitBounds would
+ *  otherwise reset the bearing to 0). Used when a route is chosen and when a Live run ends. */
+function fitRoutePaths(map: maplibregl.Map, paths: [number, number][][], duration: number) {
+  const pts = paths.flat()
+  if (pts.length === 0) return
+  const lons = pts.map((p) => p[0])
+  const lats = pts.map((p) => p[1])
+  map.fitBounds(
+    [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
+    { padding: { top: 110, bottom: 110, left: 60, right: 80 }, maxZoom: 8, bearing: map.getBearing(), pitch: map.getPitch(), duration },
+  )
+}
+
+// Map interaction handlers switched off while a Live run drives the camera.
+const LIVE_LOCKED_HANDLERS = ['dragPan', 'scrollZoom', 'boxZoom', 'dragRotate', 'keyboard', 'doubleClickZoom', 'touchZoomRotate', 'touchPitch'] as const
+
+/** What a running Live trip looks like at this instant (written by the animation loop). */
+interface LiveFrame {
+  timeline: LiveTimeline
+  sample: LiveSample
+  reached: Set<string>
+  trail: [number, number][]
+}
+
 interface MapProps {
   stations: StationFeature[]
   connections: ConnectionFeature[]
@@ -92,6 +117,12 @@ interface MapProps {
   showWeather: boolean
   /** A weather pin was clicked: App opens its weather pop-up. */
   onWeatherPinClick: (pin: WeatherPin) => void
+  /** A Live run: a train rides this timeline while the camera follows it (null = not running). */
+  live: LiveTimeline | null
+  /** The train reached another passenger station (called once per station, and at the start). */
+  onLiveProgress: (sample: LiveSample) => void
+  /** The run finished on its own (the camera has already fitted the full route again). */
+  onLiveEnd: () => void
 }
 
 /**
@@ -102,7 +133,7 @@ interface MapProps {
  * deck.gl are plain JS libraries here (no react-map-gl): the Map/overlay instances live in
  * refs and are created once in an effect, then kept in sync with props.
  */
-export default function MapView({ stations, connections, finland, selected, onSelect, routeHighlight, routeValues, onRouteClick, activeRoute, resetSignal, onDriftChange, onReady, weatherPins, selectedWeatherPin, showWeather, onWeatherPinClick }: MapProps) {
+export default function MapView({ stations, connections, finland, selected, onSelect, routeHighlight, routeValues, onRouteClick, activeRoute, resetSignal, onDriftChange, onReady, weatherPins, selectedWeatherPin, showWeather, onWeatherPinClick, live, onLiveProgress, onLiveEnd }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const overlayRef = useRef<MapboxOverlay | null>(null)
@@ -113,6 +144,10 @@ export default function MapView({ stations, connections, finland, selected, onSe
   const routeRef = useRef<RouteHighlight | null>(routeHighlight)
   const routeValuesRef = useRef<Map<string, StationValue>>(routeValues)
   const hadRouteRef = useRef(false)
+  // Live: the frame being shown (null when not running) and the latest callbacks.
+  const liveFrameRef = useRef<LiveFrame | null>(null)
+  const onLiveProgressRef = useRef(onLiveProgress)
+  const onLiveEndRef = useRef(onLiveEnd)
   const lastRouteClickRef = useRef<number | null>(null)
   const onSelectRef = useRef(onSelect)
   const onRouteClickRef = useRef(onRouteClick)
@@ -137,6 +172,8 @@ export default function MapView({ stations, connections, finland, selected, onSe
   onSelectRef.current = onSelect
   onDriftRef.current = onDriftChange
   onWeatherClickRef.current = onWeatherPinClick
+  onLiveProgressRef.current = onLiveProgress
+  onLiveEndRef.current = onLiveEnd
   weatherPinsRef.current = weatherPins
   selectedPinRef.current = selectedWeatherPin
   showWeatherRef.current = showWeather
@@ -152,6 +189,9 @@ export default function MapView({ stations, connections, finland, selected, onSe
     const hovered = hoveredRef.current
     const route = routeRef.current
     const activeIdx = activeRouteRef.current
+    // While a Live run is going, only the stations the train has reached show their values.
+    const liveFrame = liveFrameRef.current
+    const liveReached = liveFrame?.reached ?? null
     const dim = sel !== null || route !== null
     const isSel = (d: StationFeature) => sel?.code === d.code
     const isRouteEnd = (d: StationFeature) => route !== null && (d.code === route.start || d.code === route.end)
@@ -163,6 +203,9 @@ export default function MapView({ stations, connections, finland, selected, onSe
 
     // Route mode: only the highlighted route's stations get a marker, as badges thinned by screen
     // distance (start and end always kept, then the most important stations first).
+    // The route's weather pins, limited (during a Live run) to those whose stations were reached.
+    const shownPinSource = () =>
+      liveReached ? weatherPinsRef.current.filter((p) => p.stationCodes.some((c) => liveReached.has(c))) : weatherPinsRef.current
     const badges: StationFeature[] = []
     const badgePoints: { x: number; y: number }[] = []
     const map = mapRef.current
@@ -171,12 +214,12 @@ export default function MapView({ stations, connections, finland, selected, onSe
       const isEndCode = (code: string) => code === route.start || code === route.end
       const priority = (st: StationFeature) => (isEndCode(st.code) ? -1 : rankRef.current.get(st.code) ?? 1e9)
       const candidates = route.stationCodes
-        .flatMap((code) => { const st = byCode.get(code); return st ? [st] : [] })
+        .flatMap((code) => { const st = byCode.get(code); return st && (!liveReached || liveReached.has(code)) ? [st] : [] })
         .sort((a, b) => priority(a) - priority(b))
       const kept = badgePoints
       // Heads of the route-end weather pins (drawn above the badges, see `topPins` below).
       const endHeads = showWeatherRef.current
-        ? weatherPinsRef.current
+        ? shownPinSource()
             .filter((p) => p.isEnd)
             .map((p) => {
               const tip = map.project([p.ems.lon, p.ems.lat])
@@ -199,7 +242,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
     // station is always shown (with its link line and name) unless the route already has it.
     const routePins: WeatherPin[] = []
     if (route && map && showWeatherRef.current) {
-      const ordered = [...weatherPinsRef.current].sort(
+      const ordered = [...shownPinSource()].sort(
         (a, b) => Number(b.isEnd) - Number(a.isEnd) || b.stationCodes.length - a.stationCodes.length,
       )
       const heads: { x: number; y: number }[] = []
@@ -282,6 +325,40 @@ export default function MapView({ stations, connections, finland, selected, onSe
         ? isSel(d) && !badgeCodes.has(d.code)
         : isSel(d) || isHovered(d) || (rankRef.current.get(d.code) ?? Infinity) < visibleCount
 
+    // The Live train: the route lit up behind it, a pulsing ring and the train itself on top.
+    const pulse = ((typeof performance !== 'undefined' ? performance.now() : 0) % 1400) / 1400
+    const liveLayers = liveFrame
+      ? [
+          new PathLayer<[number, number][]>({
+            id: 'live-trail-glow', data: [liveFrame.trail],
+            parameters: { depthCompare: 'always' },
+            getPath: (d) => d, widthUnits: 'pixels', capRounded: true, jointRounded: true,
+            getWidth: 15, getColor: [...NETWORK_LINE_COLOR, 130],
+          }),
+          new PathLayer<[number, number][]>({
+            id: 'live-trail-core', data: [liveFrame.trail],
+            parameters: { depthCompare: 'always' },
+            getPath: (d) => d, widthUnits: 'pixels', capRounded: true, jointRounded: true,
+            getWidth: 5, getColor: [255, 255, 255, 255],
+          }),
+          new ScatterplotLayer<[number, number]>({
+            id: 'live-pulse', data: [[liveFrame.sample.lon, liveFrame.sample.lat]],
+            parameters: { depthCompare: 'always' },
+            getPosition: (d) => d,
+            radiusUnits: 'pixels', getRadius: 20 + 16 * pulse,
+            stroked: true, filled: false, lineWidthUnits: 'pixels', getLineWidth: 3,
+            getLineColor: [255, 255, 255, Math.round(200 * (1 - pulse))],
+          }),
+          new IconLayer<[number, number]>({
+            id: 'live-train', data: [[liveFrame.sample.lon, liveFrame.sample.lat]],
+            parameters: { depthCompare: 'always' },
+            getPosition: (d) => d,
+            getIcon: () => LIVE_TRAIN_ICON,
+            sizeUnits: 'pixels', getSize: 42,
+          }),
+        ]
+      : []
+
     const setCursor = () => {
       // MapLibre's own canvas carries `cursor: grab`, which overrides the cursor deck.gl sets on
       // its container -- so set it on the MapLibre canvas directly.
@@ -293,7 +370,11 @@ export default function MapView({ stations, connections, finland, selected, onSe
       setCursor()
       overlayRef.current?.setProps({ layers: buildLayers() })
     }
-    const stationClick = ({ object }: { object?: unknown }) => onSelectRef.current((object as StationFeature | undefined) ?? null)
+    // Clicks on stations are ignored during a Live run: a selection would fly the camera away.
+    const stationClick = ({ object }: { object?: unknown }) => {
+      if (liveFrameRef.current) return
+      onSelectRef.current((object as StationFeature | undefined) ?? null)
+    }
     const emsHover = ({ object }: { object?: unknown }) => {
       emsHoverRef.current = object !== undefined && object !== null
       setCursor()
@@ -482,6 +563,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
         onClick: stationClick,
         updateTriggers: { getSize: [sel, hovered, revealT, route], getColor: [sel, hovered, route] },
       }),
+      ...liveLayers,
     ]
   }
 
@@ -690,19 +772,78 @@ export default function MapView({ stations, connections, finland, selected, onSe
     const map = mapRef.current
     if (!map) return
     if (routeHighlight) {
-      const pts = routeHighlight.paths.flat()
-      const lons = pts.map((p) => p[0])
-      const lats = pts.map((p) => p[1])
-      map.fitBounds(
-        [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
-        { padding: { top: 110, bottom: 110, left: 60, right: 80 }, maxZoom: 8, bearing: map.getBearing(), pitch: map.getPitch(), duration: 800 },
-      )
+      fitRoutePaths(map, routeHighlight.paths, 800)
       hadRouteRef.current = true
     } else if (hadRouteRef.current) {
       hadRouteRef.current = false
       map.flyTo({ ...DEFAULT_VIEW, duration: 600 })
     }
   }, [routeHighlight])
+
+  // Live: fly in to the start, then ride along with the train until the last station and fit the
+  // whole route again. The loop only writes `liveFrameRef` and re-sets the layers; what is shown
+  // for it is decided in buildLayers. Cleanup (Stop, another route, Reset, unmount) restores the
+  // map's interaction handlers and clears the frame, leaving the camera where it is.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!live || !map) return
+    const timeline = live
+    const first = timeline.route.stops[0]
+    const wasEnabled = LIVE_LOCKED_HANDLERS.map((h) => map[h].isEnabled())
+    for (const h of LIVE_LOCKED_HANDLERS) map[h].disable()
+
+    let raf = 0
+    let ended = false
+    let lastReached = -1
+    const startAt = performance.now() + LIVE.flyInMs
+
+    map.flyTo({ center: [first.lon, first.lat], zoom: LIVE.followZoom, bearing: map.getBearing(), pitch: map.getPitch(), duration: LIVE.flyInMs, essential: true })
+
+    const frame = (now: number) => {
+      if (ended) return
+      const t = Math.max(0, (now - startAt) / 1000)
+      const s = sample(timeline, t)
+      liveFrameRef.current = { timeline, sample: s, reached: reachedCodes(timeline, s.reached), trail: trailPath(timeline.route, s.km) }
+      if (s.reached !== lastReached) {
+        lastReached = s.reached
+        onLiveProgressRef.current(s)
+      }
+      // Follow once the fly-in is over: ease the centre toward the train, frame by frame.
+      if (now >= startAt) {
+        // The zoom eases too, so a fly-in that was interrupted (a hidden tab, a throttled frame)
+        // still ends up at the follow zoom instead of staying out.
+        const c = map.getCenter()
+        const z = map.getZoom()
+        // After a stall (a hidden tab, a long frame) the train may be far from the camera: snap
+        // rather than slowly sliding across the map.
+        const gap = Math.hypot(map.project([s.lon, s.lat]).x - map.project([c.lng, c.lat]).x, map.project([s.lon, s.lat]).y - map.project([c.lng, c.lat]).y)
+        const k = gap > LIVE.snapPx ? 1 : LIVE.followLerp
+        map.jumpTo({
+          center: [c.lng + (s.lon - c.lng) * k, c.lat + (s.lat - c.lat) * k],
+          zoom: z + (LIVE.followZoom - z) * LIVE.followLerp,
+        })
+      }
+      overlayRef.current?.setProps({ layers: buildLayers() })
+      if (s.done) {
+        ended = true
+        // Arrived: zoom back out to the full route (App then drops `live`, which runs cleanup).
+        if (routeRef.current) fitRoutePaths(map, routeRef.current.paths, LIVE.fitMs)
+        onLiveEndRef.current()
+        return
+      }
+      raf = requestAnimationFrame(frame)
+    }
+    raf = requestAnimationFrame(frame)
+
+    return () => {
+      ended = true
+      cancelAnimationFrame(raf)
+      liveFrameRef.current = null
+      LIVE_LOCKED_HANDLERS.forEach((h, i) => { if (wasEnabled[i]) map[h].enable() })
+      overlayRef.current?.setProps({ layers: buildLayers() })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live])
 
   // Reset view: App has already cleared the selection/route; this just flies the camera home.
   useEffect(() => {

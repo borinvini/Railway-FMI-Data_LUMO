@@ -430,6 +430,22 @@ copy says "weather station", never "EMS".
   198 stations) exist and would give true monthly extremes, but the owner chose train-time
   readings only.
 
+### "Live" (experimental, branch `live-train`)
+
+After choosing a route, **Live** (button in the route finder card) sends a train along the busiest
+variant (`routeResult.paths[0]`): the camera flies to the start, follows the train, and at the last
+station fits the whole route again. Each station's delay badge and weather pin appear as the train
+reaches it; a now-playing card (`LiveCard`) shows the current stop's figures. Esc, Stop, Reset view or
+another route ends it; map pan/zoom is locked while it runs, and the 90 s idle reset is suspended.
+
+- It is a **time-lapse of a typical trip built from January averages**, not real time and not the
+  timetable; the card says so. Do not present it as live data.
+- `lib/liveTrain.ts` is pure (geometry, timeline, `sample`); `Map.tsx` runs the `requestAnimationFrame`
+  loop (effect on `live`). All tunables are in `LIVE` (cruise speed, dwell, zoom, easing, snap).
+- Duration is about 40-70 s (moving 12-45 s plus ~0.9 s at every passenger station, shortened to
+  stay under 70 s).
+- To discard: `git switch station-network-map && git branch -D live-train`.
+
 ## Conventions
 
 - `scripts/routes_lib.py` is the **only** module that reads the parquet (fastparquet,

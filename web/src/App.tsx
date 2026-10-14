@@ -7,8 +7,10 @@ import RouteFinder from './components/RouteFinder'
 import SideColumn from './components/SideColumn'
 import StationPanel from './components/StationPanel'
 import StationSelect from './components/StationSelect'
+import LiveCard from './components/LiveCard'
 import WeatherStationDetails from './components/WeatherStationDetails'
 import { findRoutes, pickRandomRoute, toHighlight } from './lib/routeFinder'
+import { buildLiveRoute, buildTimeline, type LiveTimeline } from './lib/liveTrain'
 import { routeStationValues, routeWeatherPins, type StationValue } from './lib/routeStats'
 import { formatSnow, formatTemp } from './lib/weatherFormat'
 import type { ConnectionFeature, EmsWeatherFile, FinlandGeoJSON, RoutePattern, RouteStatsFile, StationFeature, SummaryFile, WeatherPin } from './lib/types'
@@ -42,6 +44,10 @@ export default function App() {
   const [showWeather, setShowWeather] = useState(true)
   const [emsWeather, setEmsWeather] = useState<EmsWeatherFile | null>(null)
   const [emsFailed, setEmsFailed] = useState(false)
+  // Live: the run in progress (a train riding the busiest variant of the route) and the index of
+  // the passenger stop it is at, for the now-playing card.
+  const [live, setLive] = useState<LiveTimeline | null>(null)
+  const [liveAt, setLiveAt] = useState(-1)
 
   useEffect(() => {
     let cancelled = false
@@ -148,7 +154,29 @@ export default function App() {
     }
   }, [selected, emsWeather, stationNames])
 
+  const startLive = useCallback(() => {
+    const path = routeResult?.paths[0]
+    if (!path) return
+    const route = buildLiveRoute(path.stops, coords, stationNames)
+    if (route.stops.length < 2) return
+    setSelected(null)
+    setWeatherPin(null)
+    setDetailIndex(null)
+    setLiveAt(-1)
+    setLive(buildTimeline(route))
+  }, [routeResult, coords, stationNames])
+
+  // The run ends with a different route, with Esc, and with Reset view (resetAll below).
+  useEffect(() => { setLive(null) }, [routeStart, routeEnd])
+  useEffect(() => {
+    if (!live) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setLive(null) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [live])
+
   const resetAll = useCallback(() => {
+    setLive(null)
     setSelected(null)
     setRouteStart(null)
     setRouteEnd(null)
@@ -160,9 +188,15 @@ export default function App() {
   // Unattended kiosk: after IDLE_RESET_MS without a touch, mouse move or key press, go home.
   const resetAllRef = useRef(resetAll)
   resetAllRef.current = resetAll
+  // A Live run has no input for a minute: that is not an absent visitor.
+  const liveRef = useRef(live)
+  liveRef.current = live
   useEffect(() => {
     let timer = window.setTimeout(fire, IDLE_RESET_MS)
-    function fire() { resetAllRef.current() }
+    function fire() {
+      if (liveRef.current) { poke(); return }
+      resetAllRef.current()
+    }
     function poke() {
       window.clearTimeout(timer)
       timer = window.setTimeout(fire, IDLE_RESET_MS)
@@ -196,6 +230,9 @@ export default function App() {
         selectedWeatherPin={selectedPin}
         showWeather={showWeather}
         onWeatherPinClick={setWeatherPin}
+        live={live}
+        onLiveProgress={(s) => setLiveAt(s.at)}
+        onLiveEnd={() => setLive(null)}
       />
 
       <SideColumn>
@@ -219,9 +256,27 @@ export default function App() {
             setRouteEnd(stations.find((s) => s.code === pick.end) ?? null)
           }}
           onClear={() => { setRouteStart(null); setRouteEnd(null) }}
+          onLive={() => (live ? setLive(null) : startLive())}
+          liveRunning={live !== null}
         />
         <StationSelect stations={stations} selected={selected} onSelect={setSelected} />
       </SideColumn>
+
+      {live && (() => {
+        const stop = liveAt >= 0 ? live.route.stops[live.passengerIndexes[liveAt]] : null
+        const pin = stop ? routePins.find((p) => p.stationCodes.includes(stop.code)) : undefined
+        return (
+          <LiveCard
+            stopName={stop?.name ?? null}
+            delay={stop ? routeValues.get(stop.code)?.avg ?? null : null}
+            temp={pin?.temp ?? null}
+            snow={pin?.snow ?? null}
+            reached={liveAt + 1}
+            total={live.passengerIndexes.length}
+            onStop={() => setLive(null)}
+          />
+        )
+      })()}
 
       {/* Legend and Reset view share one row, so the button never overlaps the legend. The row
           starts to the right of the left column (not under it): the column can be tall, and the

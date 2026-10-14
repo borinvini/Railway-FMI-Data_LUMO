@@ -14,6 +14,10 @@ interface RouteFinderProps {
   onSwap: () => void
   onRandom: () => void
   onClear: () => void
+  /** Start a Live run of the route (a train rides it and the camera follows). */
+  onLive: () => void
+  /** A Live run is going: the button reads Stop and ends it. */
+  liveRunning: boolean
 }
 
 const ghostButton =
@@ -24,7 +28,7 @@ const ghostButton =
  * route between them (Map.tsx draws it from the `routeHighlight` App derives from `result`).
  * Direct trains only -- a train that stops at the start station and later at the end station.
  */
-export default function RouteFinder({ stations, start, end, result, onStart, onEnd, onSwap, onRandom, onClear }: RouteFinderProps) {
+export default function RouteFinder({ stations, start, end, result, onStart, onEnd, onSwap, onRandom, onClear, onLive, liveRunning }: RouteFinderProps) {
   const both = start !== null && end !== null
 
   return (
@@ -76,6 +80,21 @@ export default function RouteFinder({ stations, start, end, result, onStart, onE
         </svg>
         Random route
       </button>
+
+      {both && result && (
+        <button
+          type="button"
+          onClick={onLive}
+          aria-pressed={liveRunning}
+          className={`${ghostButton} mt-2 w-full ${liveRunning ? 'border-(--card-ink) bg-(--card-ink) !text-white hover:!bg-(--card-ink)' : ''}`}
+        >
+          <span className="relative flex h-2.5 w-2.5" aria-hidden="true">
+            {!liveRunning && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-current opacity-60" />}
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-current" />
+          </span>
+          {liveRunning ? 'Stop' : 'Live'}
+        </button>
+      )}
 
       <div className="mt-3 border-t border-(--card-line) pt-2.5 text-[15px] text-(--card-ink-2)">
         {!both && 'Pick two stations to see which trains connect them.'}
