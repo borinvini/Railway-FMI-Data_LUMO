@@ -134,6 +134,8 @@ def build_ems_weather_payload(summary: dict) -> dict:
             "gust": {"max": r(v["gust"]["max"], 1), "maxAt": v["gust"]["maxAt"]},
             "visibility": {"min": r(v["visibility"]["min"], 0), "minAt": v["visibility"]["minAt"]},
             "daily": [day(d) for d in v["daily"]],
+            "snowDaily": [r(x, 0) for x in v["snowDaily"]],
+            "gustDaily": [r(x, 1) for x in v["gustDaily"]],
         }
     return {"dates": summary["dates"], "stations": stations}
 

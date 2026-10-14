@@ -53,6 +53,9 @@ export interface EmsWeather {
   visibility: { min: number | null; minAt: string | null }
   /** [min, mean, max] air temperature per date, null on days with no readings. */
   daily: ([number, number, number] | null)[]
+  /** Deepest snow (cm) and strongest gust (m/s) per date, null on days with no reading. */
+  snowDaily: (number | null)[]
+  gustDaily: (number | null)[]
 }
 
 export interface EmsWeatherFile {

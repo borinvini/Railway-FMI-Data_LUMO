@@ -1,5 +1,5 @@
 import { BarController, BarElement, CategoryScale, Chart, LinearScale, Tooltip } from 'chart.js'
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { EmsWeather, StationEms } from '../lib/types'
 
 Chart.register(BarController, BarElement, CategoryScale, LinearScale, Tooltip)
@@ -10,6 +10,7 @@ const MIN_READINGS = 100
 const BLUE = '#002f6c'
 const INK = '#243f5e'
 const GRID = 'rgba(0, 47, 108, 0.14)'
+const FONT = 'Barlow, system-ui, sans-serif'
 
 interface WeatherStationDetailsProps {
   ems: StationEms
@@ -31,14 +32,23 @@ const degrees = (t: number) => {
   return `${r < 0 ? '−' : ''}${Math.abs(r)}°C`
 }
 
+type View = 'temp' | 'snow' | 'wind'
+
 /**
  * Pop-up in front of the map with one weather station's January weather, from the readings the
  * data matched to it whenever a train was nearby (see scripts/routes_lib.py
  * `ems_weather_summary`). That is not a continuous record: a cold night with no trains is not in
  * it, so the extremes are "at train times" and the pop-up says so. Same shell and Esc handling
- * as RouteDetails.
+ * as RouteDetails. One chart at a time, switched by tabs, so the pop-up stays short.
  */
 export default function WeatherStationDetails({ ems, stationName, weather, dates, loadFailed, onClose }: WeatherStationDetailsProps) {
+  const [view, setView] = useState<View>('temp')
+  // Stable identity, so the chart is only redrawn when the data (or the tab) changes.
+  const tempRanges = useMemo(
+    () => (weather?.daily ?? []).map((d): [number, number] | null => (d ? [d[0], d[2]] : null)),
+    [weather],
+  )
+
   // Esc closes just this pop-up: capture on window so the page-wide Esc handler (which would
   // also deselect the station) never sees it.
   useEffect(() => {
@@ -52,6 +62,15 @@ export default function WeatherStationDetails({ ems, stationName, weather, dates
   }, [onClose])
 
   const enough = weather !== null && weather.readings >= MIN_READINGS
+  const hasSnow = weather?.snowDaily.some((v) => v !== null) ?? false
+  const hasWind = weather?.gustDaily.some((v) => v !== null) ?? false
+  // A tab only appears when it has something to draw; fall back to temperature otherwise.
+  const tabs: { id: View; label: string }[] = [
+    { id: 'temp', label: 'Temperature' },
+    ...(hasSnow ? [{ id: 'snow' as const, label: 'Snow' }] : []),
+    ...(hasWind ? [{ id: 'wind' as const, label: 'Wind' }] : []),
+  ]
+  const shown: View = tabs.some((t) => t.id === view) ? view : 'temp'
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[rgba(2,6,13,0.55)] p-4" onClick={onClose}>
@@ -134,11 +153,83 @@ export default function WeatherStationDetails({ ems, stationName, weather, dates
               />
             </div>
 
-            <h3 className="font-board mt-6 mb-1 text-[22px] font-semibold">Temperature day by day</h3>
-            <p className="m-0 mb-2 text-[15px] text-(--card-ink-2)">
-              Each bar runs from the coldest to the warmest reading that day. Days with no bar had no readings.
-            </p>
-            <DailyChart dates={dates} daily={weather.daily} />
+            <div role="tablist" aria-label="Weather by day" className="mt-6 flex flex-wrap gap-2">
+              {tabs.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={t.id === shown}
+                  onClick={() => setView(t.id)}
+                  className={`min-h-11 cursor-pointer rounded-full border px-5 py-1 text-[15px] ${
+                    t.id === shown
+                      ? 'border-(--card-ink) bg-(--card-ink) text-white'
+                      : 'border-[rgba(0,47,108,0.3)] text-(--card-ink-2) hover:bg-[rgba(0,47,108,0.1)]'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {shown === 'temp' && (
+              <>
+                <p className="m-0 mt-3 mb-2 text-[15px] text-(--card-ink-2)">
+                  Each bar runs from the coldest to the warmest reading that day. Days with no bar had no readings.
+                </p>
+                <DayChart
+                  dates={dates}
+                  values={tempRanges}
+                  yTitle="Air temperature (°C)"
+                  ariaLabel="Bar chart of the coldest and warmest temperature reading on each day of January"
+                  tooltip={(i) => {
+                    const d = weather.daily[i]
+                    return d ? `${degrees(d[0])} to ${degrees(d[2])}, average ${degrees(d[1])}` : 'No readings'
+                  }}
+                />
+              </>
+            )}
+
+            {shown === 'snow' && (
+              <>
+                <p className="m-0 mt-3 mb-2 text-[15px] text-(--card-ink-2)">
+                  The deepest snow measured on each day.
+                  {weather.snow.daysWithSnow > 0
+                    ? ` Snow lay on the ground on ${weather.snow.daysWithSnow} of the ${weather.days} days with readings.`
+                    : ' There was no snow on the ground at any reading.'}
+                </p>
+                <DayChart
+                  dates={dates}
+                  values={weather.snowDaily}
+                  yTitle="Snow on the ground (cm)"
+                  beginAtZero
+                  ariaLabel="Bar chart of the deepest snow measured on each day of January"
+                  tooltip={(i) => {
+                    const v = weather.snowDaily[i]
+                    return v === null ? 'No readings' : v <= 0 ? 'No snow' : `${v.toFixed(0)} cm of snow`
+                  }}
+                />
+              </>
+            )}
+
+            {shown === 'wind' && (
+              <>
+                <p className="m-0 mt-3 mb-2 text-[15px] text-(--card-ink-2)">
+                  The strongest gust of wind measured on each day, in metres per second (1 m/s is 3.6 km/h).
+                </p>
+                <DayChart
+                  dates={dates}
+                  values={weather.gustDaily}
+                  yTitle="Strongest gust (m/s)"
+                  beginAtZero
+                  ariaLabel="Bar chart of the strongest gust of wind measured on each day of January"
+                  tooltip={(i) => {
+                    const v = weather.gustDaily[i]
+                    return v === null ? 'No readings' : `${v.toFixed(0)} m/s (${(v * 3.6).toFixed(0)} km/h)`
+                  }}
+                />
+              </>
+            )}
 
             <p className="m-0 mt-4 text-sm text-(--card-ink-3)">
               Based on {weather.readings.toLocaleString('en-GB')} readings
@@ -163,8 +254,20 @@ function Tile({ label, value, note }: { label: string; value: string; note?: str
   )
 }
 
-/** Floating bars (coldest to warmest reading) for each day; a day with no readings is a gap. */
-function DailyChart({ dates, daily }: { dates: string[]; daily: EmsWeather['daily'] }) {
+interface DayChartProps {
+  dates: string[]
+  /** One entry per date: a value, a [low, high] range (floating bar), or null for a gap. */
+  values: (number | [number, number] | null)[]
+  yTitle: string
+  ariaLabel: string
+  /** Plain-language text for a day's tooltip, by index. */
+  tooltip: (index: number) => string
+  beginAtZero?: boolean
+}
+
+/** One bar per day of the month (Chart.js called directly, like the rest of the charts); a day
+ *  with no readings is a gap, not a zero. */
+function DayChart({ dates, values, yTitle, ariaLabel, tooltip, beginAtZero }: DayChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -175,7 +278,7 @@ function DailyChart({ dates, daily }: { dates: string[]; daily: EmsWeather['dail
       data: {
         labels: dates.map((d) => d.slice(8).replace(/^0/, '')),
         datasets: [{
-          data: daily.map((d) => (d ? [d[0], d[2]] : null)) as unknown as number[],
+          data: values as unknown as number[],
           backgroundColor: BLUE,
           borderRadius: 2,
           maxBarThickness: 16,
@@ -193,33 +296,33 @@ function DailyChart({ dates, daily }: { dates: string[]; daily: EmsWeather['dail
             backgroundColor: 'rgba(6,16,31,0.92)',
             callbacks: {
               title: (items) => shortDate(dates[items[0].dataIndex]),
-              label: (ctx) => {
-                const d = daily[ctx.dataIndex]
-                return d ? `${degrees(d[0])} to ${degrees(d[2])}, average ${degrees(d[1])}` : 'No readings'
-              },
+              label: (ctx) => tooltip(ctx.dataIndex),
             },
           },
         },
         scales: {
           x: {
             grid: { display: false },
-            ticks: { color: INK, font: { size: 13, family: 'Barlow, system-ui, sans-serif' }, autoSkip: true, maxTicksLimit: 16 },
+            ticks: { color: INK, font: { size: 13, family: FONT }, autoSkip: true, maxTicksLimit: 16 },
             title: { display: true, text: 'Day of January', color: INK },
           },
           y: {
+            beginAtZero,
             grid: { color: GRID },
-            ticks: { color: INK, font: { size: 13, family: 'Barlow, system-ui, sans-serif' } },
-            title: { display: true, text: 'Air temperature (°C)', color: INK },
+            ticks: { color: INK, font: { size: 13, family: FONT } },
+            title: { display: true, text: yTitle, color: INK },
           },
         },
       },
     })
     return () => chart.destroy()
-  }, [dates, daily])
+    // `tooltip` is rebuilt every render; the data it reads is what `values` already tracks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dates, values, yTitle, beginAtZero])
 
   return (
     <div className="relative h-[240px]">
-      <canvas ref={canvasRef} role="img" aria-label="Bar chart of the coldest and warmest temperature reading on each day of January" />
+      <canvas ref={canvasRef} role="img" aria-label={ariaLabel} />
     </div>
   )
 }

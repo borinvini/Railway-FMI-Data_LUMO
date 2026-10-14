@@ -817,6 +817,8 @@ def ems_weather_summary(events: pd.DataFrame) -> dict:
         gust, gust_at = _at(g["Gust speed"], g["date"], pd.Series.idxmax)
         vis, vis_at = _at(g["Horizontal visibility"], g["date"], pd.Series.idxmin)
         by_day = g.groupby("date")["Air temperature"].agg(["min", "mean", "max"])
+        snow_by_day = snow.groupby(g["date"]).max()
+        gust_by_day = g["Gust speed"].groupby(g["date"]).max()
         stations[name] = {
             "readings": int(len(g)),
             "slotShare": float(len(g) / (len(dates) * slots_per_day)) if dates else None,
@@ -837,6 +839,9 @@ def ems_weather_summary(events: pd.DataFrame) -> dict:
                 else [float(by_day.at[d, "min"]), float(by_day.at[d, "mean"]), float(by_day.at[d, "max"])]
                 for d in dates
             ],
+            # Deepest snow and strongest gust per day (None = no reading that day).
+            "snowDaily": [None if d not in snow_by_day.index or pd.isna(snow_by_day[d]) else float(snow_by_day[d]) for d in dates],
+            "gustDaily": [None if d not in gust_by_day.index or pd.isna(gust_by_day[d]) else float(gust_by_day[d]) for d in dates],
         }
     return {"dates": dates, "stations": stations}
 

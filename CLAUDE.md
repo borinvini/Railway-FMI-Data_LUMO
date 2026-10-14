@@ -398,7 +398,9 @@ copy says "weather station", never "EMS".
   (79% of rows are duplicates). Days are departure dates. Under 100 readings, no numbers shown.
 - Coordinates: top-5 file, then the `data/raw` CSV, then `EMS_COORD_OVERRIDES` in `routes_lib.py`
   (`Liperi Tuiskavanluoto`, from FMI's open station list).
-- Data: `stations.json[].ems`, lazy `ems_weather.json` (loaded on first open).
+- Data: `stations.json[].ems`, lazy `ems_weather.json` (loaded on first open; ~96 KB, with daily
+  temperature range, deepest snow and strongest gust per day). The pop-up shows one chart at a time
+  (Temperature / Snow / Wind tabs; a tab with no readings is left out).
 - The raw FMI observations (`Railway-FMI-Data-CSV-Files-v2/weather_data_parquet`, every 10 min,
   198 stations) exist and would give true monthly extremes, but the owner chose train-time
   readings only.
