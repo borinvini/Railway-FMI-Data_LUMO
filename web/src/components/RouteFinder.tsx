@@ -1,5 +1,6 @@
 import type { RouteResult } from '../lib/routeFinder'
 import type { StationFeature } from '../lib/types'
+import { trainTypeName } from '../lib/trainTypes'
 import StationCombobox, { stationLabel } from './StationCombobox'
 
 interface RouteFinderProps {
@@ -83,14 +84,17 @@ export default function RouteFinder({ stations, start, end, result, onStart, onE
           <>
             <ul className="m-0 list-none p-0">
               {result.byType.map((t) => (
-                <li key={t.type} className="flex justify-between py-0.5">
-                  <span className="font-board text-lg font-semibold text-(--card-ink)">{t.type}</span>
-                  <span>{t.trains} trains in January</span>
+                <li key={t.type} className="flex items-baseline justify-between gap-3 py-0.5">
+                  <span>
+                    <span className="font-board mr-1.5 text-lg font-semibold text-(--card-ink)">{t.type}</span>
+                    {trainTypeName(t.type)}
+                  </span>
+                  <span className="shrink-0">{t.trains} trains</span>
                 </li>
               ))}
             </ul>
             <div className="mt-1.5 text-sm text-(--card-ink-3)">
-              Direct trains running from {stationLabel(start!.name)} to {stationLabel(end!.name)}
+              Direct trains in January, from {stationLabel(start!.name)} to {stationLabel(end!.name)}
             </div>
           </>
         )}

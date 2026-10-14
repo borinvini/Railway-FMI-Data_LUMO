@@ -1,5 +1,6 @@
 import { BarController, BarElement, CategoryScale, Chart, LinearScale, Tooltip } from 'chart.js'
 import { useEffect, useMemo, useRef } from 'react'
+import { trainTypeName } from '../lib/trainTypes'
 import { summarizeRoute, viaLabel, type StationInfo, type StopPoint } from '../lib/routeStats'
 import type { RoutePath, RouteStatsFile, StationFeature } from '../lib/types'
 
@@ -196,7 +197,7 @@ export default function RouteDetails({ routes, active, onActive, startName, endN
                 <tbody>
                   {summary.services.map((s) => (
                     <tr key={s.id} className="border-t border-(--card-line)">
-                      <td className="py-1.5 pr-3 font-medium">{s.type}</td>
+                      <td className="py-1.5 pr-3"><span className="font-board mr-1.5 text-lg font-semibold">{s.type}</span>{trainTypeName(s.type)}</td>
                       <td className="py-1.5 pr-3">{s.journey}</td>
                       <td className="py-1.5 pr-3 text-right">{s.trains}</td>
                       <td className="py-1.5 pr-3 text-right">{s.avg === null ? '–' : `${s.avg.toFixed(1)} min`}</td>
@@ -220,7 +221,7 @@ export default function RouteDetails({ routes, active, onActive, startName, endN
                 <tbody>
                   {summary.services.map((s) => (
                     <tr key={s.id} className="border-t border-(--card-line)">
-                      <td className="py-1.5 pr-3 font-medium">{s.type}</td>
+                      <td className="py-1.5 pr-3"><span className="font-board mr-1.5 text-lg font-semibold">{s.type}</span>{trainTypeName(s.type)}</td>
                       <td className="py-1.5 pr-3">{s.journey}</td>
                       <td className="py-1.5 pr-3 text-right">{s.p90 === null ? '–' : `${s.p90.toFixed(1)} min`}</td>
                       <td className="py-1.5 text-right">{s.cancelled === null ? '–' : `${s.cancelled.toFixed(1)}%`}</td>
