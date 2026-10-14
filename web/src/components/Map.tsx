@@ -9,7 +9,8 @@ import { TOP_10_STATION_CODES } from '../lib/importantStations'
 import type { StationValue } from '../lib/routeStats'
 import { DEFAULT_VIEW, LEFT_PANEL_FRACTION, restyleBasemap } from '../lib/mapStyle'
 import { LIVE_TRAIN_ICON, ROUTE_BADGE_ICON, STATION_MARKER_ICON, STATION_MARKER_OUTLINE_ICON, WEATHER_PIN_GREY_ICON, WEATHER_PIN_ICON } from '../lib/markerIcon'
-import { LIVE, reachedCodes, sample, trailPath, type LiveSample, type LiveTimeline } from '../lib/liveTrain'
+import { LIVE, sample, trailPath, type LiveSample, type LiveTimeline } from '../lib/liveTrain'
+import { setLiveKm } from '../lib/liveStore'
 import { formatSnow, formatTemp } from '../lib/weatherFormat'
 import type { ConnectionFeature, FinlandGeoJSON, RouteHighlight, StationFeature, WeatherPin } from '../lib/types'
 
@@ -84,7 +85,6 @@ const LIVE_LOCKED_HANDLERS = ['dragPan', 'scrollZoom', 'boxZoom', 'dragRotate', 
 interface LiveFrame {
   timeline: LiveTimeline
   sample: LiveSample
-  reached: Set<string>
   trail: [number, number][]
   /** The name of the station the train is at (or has just left), faded in and out; null otherwise. */
   label: { name: string; alpha: number } | null
@@ -191,9 +191,9 @@ export default function MapView({ stations, connections, finland, selected, onSe
     const hovered = hoveredRef.current
     const route = routeRef.current
     const activeIdx = activeRouteRef.current
-    // While a Live run is going, only the stations the train has reached show their values.
+    // While a Live run is going the map shows no delay badges and no weather pins: the route, the
+    // train and the name of the station being passed are all that stay (the figures are in the charts).
     const liveFrame = liveFrameRef.current
-    const liveReached = liveFrame?.reached ?? null
     const dim = sel !== null || route !== null
     const isSel = (d: StationFeature) => sel?.code === d.code
     const isRouteEnd = (d: StationFeature) => route !== null && (d.code === route.start || d.code === route.end)
@@ -205,23 +205,20 @@ export default function MapView({ stations, connections, finland, selected, onSe
 
     // Route mode: only the highlighted route's stations get a marker, as badges thinned by screen
     // distance (start and end always kept, then the most important stations first).
-    // The route's weather pins, limited (during a Live run) to those whose stations were reached.
-    const shownPinSource = () =>
-      liveReached ? weatherPinsRef.current.filter((p) => p.stationCodes.some((c) => liveReached.has(c))) : weatherPinsRef.current
     const badges: StationFeature[] = []
     const badgePoints: { x: number; y: number }[] = []
     const map = mapRef.current
-    if (route && map) {
+    if (route && map && !liveFrame) {
       const byCode = new Map(currentStations.map((st) => [st.code, st]))
       const isEndCode = (code: string) => code === route.start || code === route.end
       const priority = (st: StationFeature) => (isEndCode(st.code) ? -1 : rankRef.current.get(st.code) ?? 1e9)
       const candidates = route.stationCodes
-        .flatMap((code) => { const st = byCode.get(code); return st && (!liveReached || liveReached.has(code)) ? [st] : [] })
+        .flatMap((code) => { const st = byCode.get(code); return st ? [st] : [] })
         .sort((a, b) => priority(a) - priority(b))
       const kept = badgePoints
       // Heads of the route-end weather pins (drawn above the badges, see `topPins` below).
       const endHeads = showWeatherRef.current
-        ? shownPinSource()
+        ? weatherPinsRef.current
             .filter((p) => p.isEnd)
             .map((p) => {
               const tip = map.project([p.ems.lon, p.ems.lat])
@@ -243,8 +240,8 @@ export default function MapView({ stations, connections, finland, selected, onSe
     // badges too, so a pin never covers a delay figure. The selected station's own weather
     // station is always shown (with its link line and name) unless the route already has it.
     const routePins: WeatherPin[] = []
-    if (route && map && showWeatherRef.current) {
-      const ordered = [...shownPinSource()].sort(
+    if (route && map && showWeatherRef.current && !liveFrame) {
+      const ordered = [...weatherPinsRef.current].sort(
         (a, b) => Number(b.isEnd) - Number(a.isEnd) || b.stationCodes.length - a.stationCodes.length,
       )
       const heads: { x: number; y: number }[] = []
@@ -260,7 +257,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
         }
       }
     }
-    const selectedPin = sel ? selectedPinRef.current : null
+    const selectedPin = sel && !liveFrame ? selectedPinRef.current : null
     const allPins =
       selectedPin && !routePins.some((p) => p.key === selectedPin.key) ? [selectedPin, ...routePins] : routePins
 
@@ -833,6 +830,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
       if (ended) return
       const t = Math.max(0, (now - startAt) / 1000)
       const s = sample(timeline, t)
+      setLiveKm(s.km)
       // The station's name rides with the train: it fades in as the train arrives and fades out
       // shortly after it pulls away (the last station's stays until the run ends). When two
       // stations are close together the newer name simply replaces the older.
@@ -845,7 +843,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
         const alpha = into * (1 - out)
         if (alpha > 0.01) label = { name: timeline.route.stops[timeline.passengerIndexes[k]].name, alpha }
       }
-      liveFrameRef.current = { timeline, sample: s, reached: reachedCodes(timeline, s.reached), trail: trailPath(timeline.route, s.km), label }
+      liveFrameRef.current = { timeline, sample: s, trail: trailPath(timeline.route, s.km), label }
       if (s.reached !== lastReached) {
         lastReached = s.reached
         onLiveProgressRef.current(s)
@@ -880,6 +878,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
     return () => {
       ended = true
       cancelAnimationFrame(raf)
+      setLiveKm(0)
       liveFrameRef.current = null
       LIVE_LOCKED_HANDLERS.forEach((h, i) => { if (wasEnabled[i]) map[h].enable() })
       overlayRef.current?.setProps({ layers: buildLayers() })

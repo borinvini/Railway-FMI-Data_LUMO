@@ -25,7 +25,7 @@ export default function LiveCard({ stopName, delay, temp, snow, reached, total, 
   ].filter((f): f is string => f !== null)
 
   return (
-    <div className="pointer-events-auto absolute top-5 left-[calc(clamp(300px,26vw,400px)+40px)] z-30 w-[min(380px,calc(100vw-460px))] rounded-[10px] border border-(--line) bg-(--surface) px-[18px] py-3.5 backdrop-blur-[8px]">
+    <div className="pointer-events-auto rounded-[10px] border border-(--line) bg-(--surface) px-[18px] py-3.5 backdrop-blur-[8px]">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-sm text-(--muted)">A typical trip, January averages</div>

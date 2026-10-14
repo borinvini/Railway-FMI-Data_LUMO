@@ -435,8 +435,10 @@ copy says "weather station", never "EMS".
 After choosing a route, **Play the journey** (button in the route finder card; "Live" was dropped
 because it reads as real time) sends a train along the busiest
 variant (`routeResult.paths[0]`): the camera flies to the start, follows the train, and at the last
-station fits the whole route again. Each station's delay badge and weather pin appear as the train
-reaches it; a now-playing card (`LiveCard`) shows the current stop's figures. Esc, Stop, Reset view or
+station fits the whole route again. While it plays the map shows **no delay badges and no weather pins**:
+only the route (with its lit trail), the train and the name of the station being passed. The figures
+live in two coloured charts instead (`LiveDelayChart`, `LiveChart`), and a now-playing card
+(`LiveCard`) shows the current stop's figures. Esc, Stop, Reset view or
 another route ends it; map pan/zoom is locked while it runs, and the 90 s idle reset is suspended.
 
 - It is a **time-lapse of a typical trip built from January averages**, not real time and not the
@@ -447,6 +449,25 @@ another route ends it; map pan/zoom is locked while it runs, and the 90 s idle r
   (`live-station-name` layer): fades in as the train arrives, lingers ~0.7 s after it pulls out, then
   fades (the last station's stays until the run ends). Only passenger stations have names; waypoints
   are passed silently. Timings in `LIVE.name*`.
+- **Left cards are hidden while it plays** (title and totals, route finder, station search); the
+  run's now-playing card (with the only Stop button) and the weather chart take the left edge, and
+  the legend row moves to the left edge too. They come back when the run ends.
+- **Delay chart** (`LiveDelayChart`): a line chart like the weather one, growing with the train: the
+  monthly average delay at each passenger stop (the figure the badges showed), linear between stops.
+  Colour keeps meaning delay: each line segment takes the colour of its level (blue under 2 min,
+  amber 2-5, crimson over 5, the old badge colours), and the area under it is banded at 2 and 5 min
+  in the same colours so the thresholds are visible; the head dot takes the current level's colour.
+  The y range is at least 0-8 min. A dashed cursor (`lib/liveCursor.ts`) marks the train's distance
+  on both charts. While it plays the legend and the "Hide weather stations" button are also hidden.
+- **Weather chart** (`LiveChart`, under the delay chart; temperature is a mint-teal line, snow an
+  ice-blue area, both kept clear of the delay colours): temperature and snow depth along the
+  route, drawn as the train runs. x = distance from the start (fixed 0 to total), left axis °C
+  (white line, 0°C emphasised), right axis cm (ice-blue area). Values are the route's own trains'
+  means at each passenger stop (same as the pins, January station average where there is none),
+  linear between stops. Axis ranges come from the whole route with a minimum span (4°C, 10 cm) and
+  round tick steps, so a flat route reads flat. The train's distance reaches the chart through
+  `lib/liveStore.ts` (a module pub-sub, not React state, so nothing re-renders per frame);
+  `lib/liveProfile.ts` is pure. January averages, not readings.
 - **Layering:** the route line and its lit trail are always *behind* every station badge and weather
   pin (trail layers sit right above the base route line in `buildLayers`); only the train and its
   pulsing ring draw above them.

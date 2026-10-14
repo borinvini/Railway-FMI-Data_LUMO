@@ -8,10 +8,13 @@ import SideColumn from './components/SideColumn'
 import StationPanel from './components/StationPanel'
 import StationSelect from './components/StationSelect'
 import LiveCard from './components/LiveCard'
+import LiveChart from './components/LiveChart'
+import LiveDelayChart from './components/LiveDelayChart'
 import WeatherStationDetails from './components/WeatherStationDetails'
 import { findRoutes, pickRandomRoute, toHighlight } from './lib/routeFinder'
 import { buildLiveRoute, buildTimeline, type LiveTimeline } from './lib/liveTrain'
-import { routeStationValues, routeWeatherPins, type StationValue } from './lib/routeStats'
+import { buildDelayProfile, buildLiveProfile } from './lib/liveProfile'
+import { routeStationValues, routeWeatherPins, summarizeRoute, type StationValue } from './lib/routeStats'
 import { formatSnow, formatTemp } from './lib/weatherFormat'
 import type { ConnectionFeature, EmsWeatherFile, FinlandGeoJSON, RoutePattern, RouteStatsFile, StationFeature, SummaryFile, WeatherPin } from './lib/types'
 
@@ -154,6 +157,38 @@ export default function App() {
     }
   }, [selected, emsWeather, stationNames])
 
+  // The temperature / snow profile the chart draws as the train runs: the route's own trains' means at
+  // each passenger stop (as on the pins), the weather station's January average where there is none.
+  const liveProfile = useMemo(() => {
+    const path = routeResult?.paths[0]
+    if (!live || !path || !routeStats) return null
+    const byCode = new Map(summarizeRoute(path, routeStats, stationNames).stops.map((s) => [s.code, s]))
+    const stationByCode = new Map(stations.map((s) => [s.code, s]))
+    const values = new Map<string, { temp: number | null; snow: number | null }>()
+    const stops = live.passengerIndexes.map((i) => live.route.stops[i])
+    for (const stop of stops) {
+      const row = byCode.get(stop.code)
+      let temp = row?.temp ?? null
+      let snow = row?.snow ?? null
+      if (temp === null) {
+        const ems = stationByCode.get(stop.code)?.ems
+        const january = ems ? emsWeather?.stations[ems.name] : undefined
+        temp = january?.temp.avg ?? null
+        snow = snow ?? january?.snow.avg ?? null
+      }
+      values.set(stop.code, { temp, snow })
+    }
+    return buildLiveProfile(stops, live.route.totalKm, values)
+  }, [live, routeResult, routeStats, stationNames, stations, emsWeather])
+
+  // The delay chart's bars: the same figure the delay badges showed on the map for each stop.
+  const liveDelayProfile = useMemo(() => {
+    if (!live) return null
+    const stops = live.passengerIndexes.map((i) => live.route.stops[i])
+    const values = new Map(stops.map((s) => [s.code, routeValues.get(s.code)?.avg ?? null]))
+    return buildDelayProfile(stops, live.route.totalKm, values)
+  }, [live, routeValues])
+
   const startLive = useCallback(() => {
     const path = routeResult?.paths[0]
     if (!path) return
@@ -235,6 +270,9 @@ export default function App() {
         onLiveEnd={() => setLive(null)}
       />
 
+      {/* While the journey plays the three left cards are hidden; the run's own card (with Stop) and
+          the weather chart take the left edge instead. */}
+      {!live && (
       <SideColumn>
         <MonthSummary summary={summary} />
         <RouteFinder
@@ -261,29 +299,36 @@ export default function App() {
         />
         <StationSelect stations={stations} selected={selected} onSelect={setSelected} />
       </SideColumn>
+      )}
 
       {live && (() => {
         const stop = liveAt >= 0 ? live.route.stops[live.passengerIndexes[liveAt]] : null
         const pin = stop ? routePins.find((p) => p.stationCodes.includes(stop.code)) : undefined
         return (
-          <LiveCard
-            stopName={stop?.name ?? null}
-            delay={stop ? routeValues.get(stop.code)?.avg ?? null : null}
-            temp={pin?.temp ?? null}
-            snow={pin?.snow ?? null}
-            reached={liveAt + 1}
-            total={live.passengerIndexes.length}
-            onStop={() => setLive(null)}
-          />
+          // The now-playing card with the weather chart under it, in the empty area west of Finland.
+          <div className="pointer-events-none absolute top-5 left-5 z-30 flex w-[min(380px,calc(100vw-40px))] flex-col gap-3">
+            <LiveCard
+              stopName={stop?.name ?? null}
+              delay={stop ? routeValues.get(stop.code)?.avg ?? null : null}
+              temp={pin?.temp ?? null}
+              snow={pin?.snow ?? null}
+              reached={liveAt + 1}
+              total={live.passengerIndexes.length}
+              onStop={() => setLive(null)}
+            />
+            {liveDelayProfile && <LiveDelayChart profile={liveDelayProfile} />}
+            {liveProfile && <LiveChart profile={liveProfile} />}
+          </div>
         )
       })()}
 
       {/* Legend and Reset view share one row, so the button never overlaps the legend. The row
           starts to the right of the left column (not under it): the column can be tall, and the
           legend grows when a route is shown. */}
-      <div className="pointer-events-none absolute bottom-6 left-[calc(clamp(300px,26vw,400px)+40px)] z-30 flex items-end gap-3">
-        <Legend routeMode={routeHighlight !== null} weatherShown={showWeather && routePins.length > 0} />
-        {routeHighlight !== null && routePins.length > 0 && (
+      <div className={`pointer-events-none absolute bottom-6 z-30 flex items-end gap-3 ${live ? 'left-5' : 'left-[calc(clamp(300px,26vw,400px)+40px)]'}`}>
+        {/* While the journey plays the map has no badges or pins to explain: the charts carry the colours. */}
+        {!live && <Legend routeMode={routeHighlight !== null} weatherShown={showWeather && routePins.length > 0} />}
+        {!live && routeHighlight !== null && routePins.length > 0 && (
           <button
             type="button"
             onClick={() => setShowWeather((v) => !v)}
