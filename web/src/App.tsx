@@ -13,6 +13,7 @@ import LiveChart from './components/LiveChart'
 import LiveDelayChart from './components/LiveDelayChart'
 import WeatherStationDetails from './components/WeatherStationDetails'
 import { findRoutes, pickRandomRoute, toHighlight } from './lib/routeFinder'
+import { PRESENT } from './lib/presentation'
 import { buildLiveRoute, buildTimeline, type LiveTimeline } from './lib/liveTrain'
 import { buildDelayProfile, buildLiveProfile } from './lib/liveProfile'
 import { routeStationValues, routeWeatherPins, summarizeRoute, type StationValue } from './lib/routeStats'
@@ -60,6 +61,16 @@ export default function App() {
   // the passenger stop it is at, for the now-playing card.
   const [live, setLive] = useState<LiveTimeline | null>(null)
   const [liveAt, setLiveAt] = useState(-1)
+  // Presentation mode: the camera flies a looping tour over Finland (lib/presentation.ts). `armed`
+  // stays true after the button is pressed until Stop or Esc: a visitor's touch only ends the flight,
+  // and the idle timer then resets the page and starts it again (an unattended screen at an event).
+  const [presenting, setPresenting] = useState(false)
+  const armedRef = useRef(false)
+  // The show's cycle: one aerial tour, a random route held for a moment ('route'), the journey played on it
+  // ('journey'), the arrived route held ('arrived'), then the next tour. `presentCycle` restarts the flight.
+  type ShowPhase = 'aerial' | 'route' | 'journey' | 'arrived'
+  const [showPhase, setShowPhase] = useState<ShowPhase>('aerial')
+  const [presentCycle, setPresentCycle] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -239,16 +250,33 @@ export default function App() {
     return buildDelayProfile(stops, live.route.totalKm, values)
   }, [live, routeValues])
 
+  // A random pair of stations a real train connects, in the picked year, other than the pair on show:
+  // the "Random route" button and the presentation show both use it.
+  const pickRandomPair = useCallback(() => {
+    const pick = pickRandomRoute(
+      patterns,
+      new Map(stations.map((s) => [s.code, { lat: s.lat, lon: s.lon }])),
+      routeStart && routeEnd ? { start: routeStart.code, end: routeEnd.code } : null,
+      yearIndex,
+    )
+    if (!pick) return null
+    return {
+      start: stations.find((s) => s.code === pick.start) ?? null,
+      end: stations.find((s) => s.code === pick.end) ?? null,
+    }
+  }, [patterns, stations, routeStart, routeEnd, yearIndex])
+
   const startLive = useCallback(() => {
     const path = routeResult?.paths[0]
-    if (!path) return
+    if (!path) return false
     const route = buildLiveRoute(path.stops, coords, stationNames)
-    if (route.stops.length < 2) return
+    if (route.stops.length < 2) return false
     setSelected(null)
     setWeatherPin(null)
     setDetailIndex(null)
     setLiveAt(-1)
     setLive(buildTimeline(route))
+    return true
   }, [routeResult, coords, stationNames])
 
   // The run ends with a different route, with Esc, and with Reset view (resetAll below).
@@ -259,6 +287,81 @@ export default function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [live])
+
+  // Presentation mode starts from a clean map: no journey, selection, route or open pop-up (the picked
+  // year stays).
+  const startPresenting = useCallback(() => {
+    setLive(null)
+    setSelected(null)
+    setRouteStart(null)
+    setRouteEnd(null)
+    setDetailIndex(null)
+    setWeatherPin(null)
+    setTrendsOpen(false)
+    armedRef.current = true
+    setShowPhase('aerial')
+    setPresentCycle((n) => n + 1)
+    setPresenting(true)
+  }, [])
+
+  // While it flies, any touch, wheel or key ends it (the touch still reaches the map, so it starts a
+  // normal drag). Esc also disarms the automatic restart; so does the button (see its handler).
+  useEffect(() => {
+    if (!presenting) return
+    const stop = (e: Event) => {
+      if ((e.target as Element | null)?.closest?.('[data-presentation-toggle]')) return
+      if (e instanceof KeyboardEvent && e.key === 'Escape') armedRef.current = false
+      setPresenting(false)
+      setLive(null) // a journey the show started ends too; the route stays for the visitor to explore
+    }
+    const events = ['pointerdown', 'touchstart', 'wheel', 'keydown'] as const
+    for (const ev of events) window.addEventListener(ev, stop, { passive: true, capture: true })
+    return () => { for (const ev of events) window.removeEventListener(ev, stop, { capture: true }) }
+  }, [presenting])
+
+  // One tour flown: pick a random route, exactly like the "Random route" button, and hold it.
+  const onPresentLoop = useCallback(() => {
+    const pair = pickRandomPair()
+    if (!pair?.start || !pair.end) {
+      // No route to show: just fly the next tour.
+      setPresentCycle((n) => n + 1)
+      return
+    }
+    setRouteStart(pair.start)
+    setRouteEnd(pair.end)
+    setShowPhase('route')
+  }, [pickRandomPair])
+
+  // 'route': once the route's statistics are in (the badges and the journey's charts need them), hold it
+  // for a moment, then play the journey on it.
+  useEffect(() => {
+    if (!presenting || showPhase !== 'route' || !routeResult || !(routeStats || statsFailed)) return
+    const timer = window.setTimeout(() => {
+      setShowPhase('journey')
+      if (!startLive()) setShowPhase('arrived')
+    }, PRESENT.routeHoldSeconds * 1000)
+    return () => window.clearTimeout(timer)
+  }, [presenting, showPhase, routeResult, routeStats, statsFailed, startLive])
+
+  // 'journey': when the run is over (it arrived, or Esc ended it), hold the arrived route.
+  useEffect(() => {
+    if (presenting && showPhase === 'journey' && live === null) setShowPhase('arrived')
+  }, [presenting, showPhase, live])
+
+  // 'arrived': clear the route and fly the next tour.
+  useEffect(() => {
+    if (!presenting || showPhase !== 'arrived') return
+    const timer = window.setTimeout(() => {
+      setRouteStart(null)
+      setRouteEnd(null)
+      setSelected(null)
+      setDetailIndex(null)
+      setWeatherPin(null)
+      setShowPhase('aerial')
+      setPresentCycle((n) => n + 1)
+    }, PRESENT.arrivedHoldSeconds * 1000)
+    return () => window.clearTimeout(timer)
+  }, [presenting, showPhase])
 
   const resetAll = useCallback(() => {
     setLive(null)
@@ -278,11 +381,17 @@ export default function App() {
   // A Live run has no input for a minute: that is not an absent visitor.
   const liveRef = useRef(live)
   liveRef.current = live
+  // Same while the tour flies; and when the idle timer does fire with the tour armed, it restarts it.
+  const presentingRef = useRef(presenting)
+  presentingRef.current = presenting
+  const startPresentingRef = useRef(startPresenting)
+  startPresentingRef.current = startPresenting
   useEffect(() => {
     let timer = window.setTimeout(fire, IDLE_RESET_MS)
     function fire() {
-      if (liveRef.current) { poke(); return }
+      if (liveRef.current || presentingRef.current) { poke(); return }
       resetAllRef.current()
+      if (armedRef.current) startPresentingRef.current()
     }
     function poke() {
       window.clearTimeout(timer)
@@ -296,7 +405,7 @@ export default function App() {
     }
   }, [])
 
-  const showReset = drifted || selected !== null || routeHighlight !== null
+  const showReset = !presenting && (drifted || selected !== null || routeHighlight !== null)
 
   return (
     <div className="relative h-screen w-screen overflow-hidden">
@@ -320,6 +429,9 @@ export default function App() {
         live={live}
         onLiveProgress={(s) => setLiveAt(s.at)}
         onLiveEnd={() => setLive(null)}
+        presenting={presenting && showPhase === 'aerial'}
+        presentCycle={presentCycle}
+        onPresentLoop={onPresentLoop}
       />
 
       {/* While the journey plays the three left cards are hidden; the run's own card (with Stop) and
@@ -336,15 +448,10 @@ export default function App() {
           onEnd={setRouteEnd}
           onSwap={() => { setRouteStart(routeEnd); setRouteEnd(routeStart) }}
           onRandom={() => {
-            const pick = pickRandomRoute(
-              patterns,
-              new Map(stations.map((s) => [s.code, { lat: s.lat, lon: s.lon }])),
-              routeStart && routeEnd ? { start: routeStart.code, end: routeEnd.code } : null,
-              yearIndex,
-            )
-            if (!pick) return
-            setRouteStart(stations.find((s) => s.code === pick.start) ?? null)
-            setRouteEnd(stations.find((s) => s.code === pick.end) ?? null)
+            const pair = pickRandomPair()
+            if (!pair) return
+            setRouteStart(pair.start)
+            setRouteEnd(pair.end)
           }}
           onClear={() => { setRouteStart(null); setRouteEnd(null) }}
           onLive={() => (live ? setLive(null) : startLive())}
@@ -390,6 +497,24 @@ export default function App() {
             className="pointer-events-auto flex min-h-11 items-center gap-2 rounded-[10px] border border-(--line) bg-(--surface) px-4 text-[15px] text-(--muted) backdrop-blur-[8px] hover:text-(--text)"
           >
             {showWeather ? 'Hide weather stations' : 'Show weather stations'}
+          </button>
+        )}
+        {(!live || presenting) && (
+          <button
+            type="button"
+            data-presentation-toggle
+            aria-pressed={presenting}
+            onClick={() => {
+              if (presenting) { armedRef.current = false; setPresenting(false) } else startPresenting()
+            }}
+            className={`pointer-events-auto flex min-h-11 items-center gap-2 rounded-[10px] border bg-(--surface) px-4 text-[15px] backdrop-blur-[8px] hover:text-(--text) ${
+              presenting ? 'border-(--text) text-(--text)' : 'border-(--line) text-(--muted)'
+            }`}
+          >
+            <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4" aria-hidden="true">
+              {presenting ? <rect x="6" y="6" width="12" height="12" rx="1.5" /> : <path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5Z" />}
+            </svg>
+            {presenting ? 'Stop presentation' : 'Presentation mode'}
           </button>
         )}
         <button

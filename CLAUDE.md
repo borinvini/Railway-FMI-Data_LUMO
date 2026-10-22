@@ -502,6 +502,43 @@ another route ends it; map pan/zoom is locked while it runs, and the 90 s idle r
   stay under 70 s).
 - To discard: `git switch station-network-map && git branch -D live-train`.
 
+## Presentation mode (for an unattended screen)
+
+A **Presentation mode** button (bottom row, next to Reset view) starts a looping helicopter flight over
+Finland: the bearing swings left and right (about -25° to +150°, always facing land: a camera turned
+out over the Baltic leaves the screen empty), the tour opens on a view that fills the area right of the
+cards (not the default view, which leaves a gap), the camera dives in over Helsinki,
+Tampere, the eastern lakes, Oulu and Lapland, and the tilt rises and falls. The cards, legend and
+buttons stay on screen; only Reset view is hidden while it plays.
+
+- `lib/presentation.ts` is pure: `TOUR` (8 keyframes, one `PRESENT.segmentSeconds` = 13 s apart, ~104 s
+  per loop), `cameraAt(t)` (periodic Catmull-Rom, no jumps, also at the loop point) and `blendIn`
+  (eases from the camera's current position over 2.5 s, so it can start from any view). Edit `TOUR` to
+  change the route; keep pitch <= 70 and zoom within the map's limits. `Map.tsx` runs the
+  `requestAnimationFrame` loop with `map.jumpTo` (effect on `presenting`), the same way Play the
+  journey does; the left map padding is untouched, so the framing is right on any screen size.
+- **The cycle (repeats until stopped):** one aerial tour (`TOUR_SECONDS`, ~104 s) → a random route picked
+  exactly like the "Random route" button (`pickRandomPair` in `App.tsx`, never the same pair as the one
+  on show, in the picked year) and held 3.5 s with its badges → **Play the journey** on it → the arrived
+  route held 3.5 s → cleared, next tour. `App.tsx` runs it as a phase state (`'aerial' | 'route' |
+  'journey' | 'arrived'`, `presentCycle` restarts the flight); `Map.tsx` calls `onPresentLoop` when a tour
+  is flown. `presenting` stays true through every phase, so a touch stops the whole show in any phase
+  (and ends the journey, leaving the route for the visitor), and the idle timer stays paused. Hold times
+  are `PRESENT.routeHoldSeconds` / `arrivedHoldSeconds`. The Stop button is also shown during the journey.
+- **Starting** clears the selection, route, pop-ups and any journey (the picked year stays).
+- **Stopping:** any touch, wheel or key ends the flight (App listens on `window`; the interaction
+  handlers stay enabled, so the touch also starts a normal drag). The Stop button and Esc end it for
+  good. After a touch the page behaves as before: the 90 s idle timer resets it (back to all years)
+  **and starts the flight again**, as long as it was not stopped with the button or Esc (`armedRef`).
+  The idle reset is paused while it flies.
+- **Station names while it flies:** up to 3 names at a time fade in, stay about 3.4 s and fade out, in
+  exactly the navy tag of Play the journey (`present-station-name` layer, same `TextLayer` style).
+  The Map loop picks stations from the 24 most important (`rankRef`) that are on screen right of the
+  cards and at least 180 px from a name already showing, longest-unseen first, so the names rotate.
+  Timings and counts are in `PRESENT` (`lib/presentation.ts`, `labelAlpha`).
+- Dev only: `window.__map` is the MapLibre map (to read the camera when checking). A 1280x720 window
+  keeps the browser tool responsive; the 3D map renders in software.
+
 ## Conventions
 
 - `scripts/routes_lib.py` is the **only** module that reads the parquet (fastparquet,

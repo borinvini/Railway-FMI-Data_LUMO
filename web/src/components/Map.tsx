@@ -11,6 +11,7 @@ import { DEFAULT_VIEW, LEFT_PANEL_FRACTION, restyleBasemap } from '../lib/mapSty
 import { LIVE_TRAIN_ICON, ROUTE_BADGE_ICON, STATION_MARKER_ICON, STATION_MARKER_OUTLINE_ICON, WEATHER_PIN_GREY_ICON, WEATHER_PIN_ICON } from '../lib/markerIcon'
 import { LIVE, sample, trailPath, type LiveSample, type LiveTimeline } from '../lib/liveTrain'
 import { setLiveKm } from '../lib/liveStore'
+import { blendIn, cameraAt, labelAlpha, LABEL_LIFE_SECONDS, PRESENT, TOUR_SECONDS, type Camera } from '../lib/presentation'
 import { formatSnow, formatTemp } from '../lib/weatherFormat'
 import type { ConnectionFeature, FinlandGeoJSON, RouteHighlight, StationFeature, WeatherPin } from '../lib/types'
 
@@ -90,6 +91,16 @@ interface LiveFrame {
   label: { name: string; alpha: number } | null
 }
 
+/** A station name shown for a moment while Presentation mode flies (see the `presenting` effect). */
+interface PresentLabel {
+  code: string
+  name: string
+  lon: number
+  lat: number
+  /** performance.now() when it appeared. */
+  bornAt: number
+}
+
 interface MapProps {
   stations: StationFeature[]
   connections: ConnectionFeature[]
@@ -125,6 +136,12 @@ interface MapProps {
   onLiveProgress: (sample: LiveSample) => void
   /** The run finished on its own (the camera has already fitted the full route again). */
   onLiveEnd: () => void
+  /** Presentation mode: the camera flies the tour from lib/presentation.ts. */
+  presenting: boolean
+  /** Bumped by App for every new tour, so the flight starts over (easing in from the camera as it is). */
+  presentCycle: number
+  /** One full tour has been flown (the flight stops; App moves on to the random route). */
+  onPresentLoop: () => void
 }
 
 /**
@@ -135,7 +152,7 @@ interface MapProps {
  * deck.gl are plain JS libraries here (no react-map-gl): the Map/overlay instances live in
  * refs and are created once in an effect, then kept in sync with props.
  */
-export default function MapView({ stations, connections, finland, selected, onSelect, routeHighlight, routeValues, onRouteClick, activeRoute, resetSignal, onDriftChange, onReady, weatherPins, selectedWeatherPin, showWeather, onWeatherPinClick, live, onLiveProgress, onLiveEnd }: MapProps) {
+export default function MapView({ stations, connections, finland, selected, onSelect, routeHighlight, routeValues, onRouteClick, activeRoute, resetSignal, onDriftChange, onReady, weatherPins, selectedWeatherPin, showWeather, onWeatherPinClick, live, onLiveProgress, onLiveEnd, presenting, presentCycle, onPresentLoop }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const overlayRef = useRef<MapboxOverlay | null>(null)
@@ -148,8 +165,12 @@ export default function MapView({ stations, connections, finland, selected, onSe
   const hadRouteRef = useRef(false)
   // Live: the frame being shown (null when not running) and the latest callbacks.
   const liveFrameRef = useRef<LiveFrame | null>(null)
+  // Presentation mode: the station names currently shown (written by the flight loop).
+  const presentLabelsRef = useRef<PresentLabel[]>([])
   const onLiveProgressRef = useRef(onLiveProgress)
   const onLiveEndRef = useRef(onLiveEnd)
+  const onPresentLoopRef = useRef(onPresentLoop)
+  onPresentLoopRef.current = onPresentLoop
   const lastRouteClickRef = useRef<number | null>(null)
   const onSelectRef = useRef(onSelect)
   const onRouteClickRef = useRef(onRouteClick)
@@ -383,6 +404,33 @@ export default function MapView({ stations, connections, finland, selected, onSe
         ]
       : []
 
+    // Presentation mode: a few important station names fading in and out beside their markers, in
+    // exactly the navy tag the Play the journey run uses for the station being passed.
+    const nowMs = typeof performance !== 'undefined' ? performance.now() : 0
+    const presentNames = presentLabelsRef.current.map((l) => ({ name: l.name, lon: l.lon, lat: l.lat, alpha: labelAlpha((nowMs - l.bornAt) / 1000) }))
+    const presentNameLayer = presentNames.length
+      ? [
+          new TextLayer<{ name: string; lon: number; lat: number; alpha: number }>({
+            id: 'present-station-name', data: presentNames,
+            parameters: { depthCompare: 'always' },
+            getPosition: (d) => [d.lon, d.lat],
+            getText: (d) => d.name,
+            getSize: 24, sizeUnits: 'pixels',
+            getColor: (d) => [255, 255, 255, Math.round(255 * d.alpha)],
+            getPixelOffset: [24, -30],
+            getTextAnchor: 'start', getAlignmentBaseline: 'center',
+            fontFamily: WEATHER_FONT, fontWeight: 600,
+            characterSet: 'auto',
+            background: true,
+            backgroundPadding: [12, 6],
+            getBackgroundColor: (d) => [6, 16, 31, Math.round(235 * d.alpha)],
+            getBorderColor: (d) => [156, 195, 232, Math.round(200 * d.alpha)],
+            getBorderWidth: 1.5,
+            updateTriggers: { getColor: [nowMs], getBackgroundColor: [nowMs], getBorderColor: [nowMs] },
+          }),
+        ]
+      : []
+
     const setCursor = () => {
       // MapLibre's own canvas carries `cursor: grab`, which overrides the cursor deck.gl sets on
       // its container -- so set it on the MapLibre canvas directly.
@@ -591,6 +639,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
         updateTriggers: { getSize: [sel, hovered, revealT, route], getColor: [sel, hovered, route] },
       }),
       ...liveTrain,
+      ...presentNameLayer,
     ]
   }
 
@@ -628,6 +677,8 @@ export default function MapView({ stations, connections, finland, selected, onSe
         attributionControl: { compact: true },
       })
       mapRef.current = map
+      // Dev only: lets a debugging session read the camera (see CLAUDE.md "Presentation mode").
+      if (import.meta.env.DEV) (window as unknown as { __map?: maplibregl.Map }).__map = map
 
       // Draw the camera centre in the middle of the area right of the statistics column,
       // without touching DEFAULT_VIEW. Padding is persistent camera state, so Reset view and
@@ -885,6 +936,77 @@ export default function MapView({ stations, connections, finland, selected, onSe
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [live])
+
+  // Presentation mode: fly the tour (lib/presentation.ts) frame by frame, easing in from wherever
+  // the camera is. The interaction handlers stay on, so the touch that ends the tour (App watches
+  // for it) also starts a normal drag. Cleanup stops the loop and leaves the camera where it is.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!presenting || !map) return
+    const c = map.getCenter()
+    const from: Camera = { lon: c.lng, lat: c.lat, zoom: map.getZoom(), pitch: map.getPitch(), bearing: map.getBearing() }
+    const startedAt = performance.now()
+    let raf = 0
+    let lastSpawn = startedAt
+    // When each station last had its name shown: the one shown longest ago (or never) goes next, so the
+    // names rotate through the important stations instead of repeating the same few.
+    const lastShown = new Map<string, number>()
+    const stripAsema = (s: string) => s.replace(/ asema$/, '')
+
+    // Show one more name if there is a free slot: an important station that is on screen (right of
+    // the cards, away from the edges), far enough from the names already showing.
+    const spawnLabel = (now: number) => {
+      const labels = presentLabelsRef.current
+      const rank = rankRef.current
+      const width = map.getContainer().clientWidth
+      const height = map.getContainer().clientHeight
+      const left = (map.getPadding().left ?? 0) + 70
+      const taken = labels.map((l) => map.project([l.lon, l.lat]))
+      const options = stationsRef.current
+        .filter((s) => (rank.get(s.code) ?? Infinity) < PRESENT.poolSize && !labels.some((l) => l.code === s.code))
+        .flatMap((s) => {
+          const p = map.project([s.lon, s.lat])
+          const onScreen = p.x > left && p.x < width - 260 && p.y > 130 && p.y < height - 110
+          const apart = taken.every((q) => Math.hypot(q.x - p.x, q.y - p.y) >= PRESENT.minSeparationPx)
+          return onScreen && apart ? [s] : []
+        })
+        .sort((a, b) => (lastShown.get(a.code) ?? -Infinity) - (lastShown.get(b.code) ?? -Infinity) || (rank.get(a.code) ?? 0) - (rank.get(b.code) ?? 0))
+      const pick = options[0]
+      if (!pick) return
+      lastShown.set(pick.code, now)
+      presentLabelsRef.current = [...labels, { code: pick.code, name: stripAsema(pick.name), lon: pick.lon, lat: pick.lat, bornAt: now }]
+    }
+
+    const frame = (now: number) => {
+      const t = (now - startedAt) / 1000
+      // One full tour flown: stop here and let App pick the random route (it bumps presentCycle later).
+      if (t >= TOUR_SECONDS) {
+        onPresentLoopRef.current()
+        return
+      }
+      const cam = blendIn(from, cameraAt(t), t)
+      map.jumpTo({ center: [cam.lon, cam.lat], zoom: cam.zoom, pitch: cam.pitch, bearing: cam.bearing })
+
+      // Names: retire the ones that have faded out, add a new one every so often.
+      const alive = presentLabelsRef.current.filter((l) => (now - l.bornAt) / 1000 < LABEL_LIFE_SECONDS)
+      const changed = alive.length !== presentLabelsRef.current.length
+      presentLabelsRef.current = alive
+      if (t > PRESENT.blendSeconds && alive.length < PRESENT.maxLabels && (now - lastSpawn) / 1000 >= PRESENT.spawnEverySeconds) {
+        lastSpawn = now
+        spawnLabel(now)
+      }
+      // The names fade frame by frame, so the layers are rebuilt while any is showing.
+      if (changed || presentLabelsRef.current.length > 0) overlayRef.current?.setProps({ layers: buildLayers() })
+      raf = requestAnimationFrame(frame)
+    }
+    raf = requestAnimationFrame(frame)
+    return () => {
+      cancelAnimationFrame(raf)
+      presentLabelsRef.current = []
+      overlayRef.current?.setProps({ layers: buildLayers() })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presenting, presentCycle])
 
   // Reset view: App has already cleared the selection/route; this just flies the camera home.
   useEffect(() => {
