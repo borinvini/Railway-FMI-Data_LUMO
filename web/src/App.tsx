@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import MapView from './components/Map'
 import Legend from './components/Legend'
-import MonthSummary from './components/MonthSummary'
+import DelayTrends from './components/DelayTrends'
+import PeriodSummary from './components/PeriodSummary'
 import RouteDetails from './components/RouteDetails'
 import RouteFinder from './components/RouteFinder'
 import SideColumn from './components/SideColumn'
@@ -16,14 +17,16 @@ import { buildLiveRoute, buildTimeline, type LiveTimeline } from './lib/liveTrai
 import { buildDelayProfile, buildLiveProfile } from './lib/liveProfile'
 import { routeStationValues, routeWeatherPins, summarizeRoute, type StationValue } from './lib/routeStats'
 import { formatSnow, formatTemp } from './lib/weatherFormat'
-import type { ConnectionFeature, EmsWeatherFile, FinlandGeoJSON, RoutePattern, RouteStatsFile, StationFeature, SummaryFile, WeatherPin } from './lib/types'
+import { periodLabel, scopeOf } from './lib/period'
+import type { ConnectionFeature, EmsStationFile, FinlandGeoJSON, RoutePattern, RouteStatsFile, RouteTrendsFile, StationFeature, StationStats, SummaryFile, WeatherPin } from './lib/types'
 
 const NO_VALUES = new Map<string, StationValue>()
 // A kiosk left alone this long goes back to the start view (see the idle effect in App).
 const IDLE_RESET_MS = 90_000
 
 export default function App() {
-  const [stations, setStations] = useState<StationFeature[]>([])
+  // The stations of the whole period (stations.json); `stations` below swaps in a picked year's figures.
+  const [baseStations, setBaseStations] = useState<StationFeature[]>([])
   const [connections, setConnections] = useState<ConnectionFeature[]>([])
   const [finland, setFinland] = useState<FinlandGeoJSON | null>(null)
   const [selected, setSelected] = useState<StationFeature | null>(null)
@@ -32,20 +35,26 @@ export default function App() {
   const [routeEnd, setRouteEnd] = useState<StationFeature | null>(null)
   // Which highlighted route's details pop-up is open (index into the route result), if any.
   const [detailIndex, setDetailIndex] = useState<number | null>(null)
-  // route_stats.json is loaded lazily, the first time a route's details are opened.
-  const [routeStats, setRouteStats] = useState<RouteStatsFile | null>(null)
+  // The picked year (null = all years). Every number and colour on the page follows it.
+  const [year, setYear] = useState<number | null>(null)
+  const [trendsOpen, setTrendsOpen] = useState(false)
+  // Lazy files, loaded the first time they are needed and kept: a year's station figures, a period's
+  // route statistics (data/scope/<period>/), the per-route monthly delays and each weather station.
+  const [yearStations, setYearStations] = useState<Record<string, Record<string, StationStats>>>({})
+  const [routeStatsByScope, setRouteStatsByScope] = useState<Record<string, RouteStatsFile>>({})
   const [statsFailed, setStatsFailed] = useState(false)
+  const [routeTrends, setRouteTrends] = useState<RouteTrendsFile | null>(null)
   const [summary, setSummary] = useState<SummaryFile | null>(null)
   // Reset view: App clears the selection, Map flies home when `resetSignal` changes.
   const [resetSignal, setResetSignal] = useState(0)
   const [drifted, setDrifted] = useState(false)
   const [mapReady, setMapReady] = useState(false)
-  // The weather station whose January pop-up is open (a pin on the map, or the selected station's
-  // via the station panel). ems_weather.json loads as soon as any weather pin is on screen.
+  // The weather station whose pop-up is open (a pin on the map, or the selected station's via the
+  // station panel). Its file (data/ems/<file>.json) loads when the pop-up opens.
   const [weatherPin, setWeatherPin] = useState<WeatherPin | null>(null)
   // The "Hide weather stations" switch (route mode); the pins are shown by default.
   const [showWeather, setShowWeather] = useState(true)
-  const [emsWeather, setEmsWeather] = useState<EmsWeatherFile | null>(null)
+  const [emsFiles, setEmsFiles] = useState<Record<string, EmsStationFile>>({})
   const [emsFailed, setEmsFailed] = useState(false)
   // Live: the run in progress (a train riding the busiest variant of the route) and the index of
   // the passenger stop it is at, for the now-playing card.
@@ -59,11 +68,11 @@ export default function App() {
       fetch('data/connections.json').then((r) => r.json() as Promise<ConnectionFeature[]>),
       fetch('data/finland.geojson').then((r) => r.json() as Promise<FinlandGeoJSON>),
       fetch('data/route_patterns.json').then((r) => r.json() as Promise<RoutePattern[]>),
-      // The month numbers are nice-to-have: a missing summary.json must not block the map.
+      // The headline numbers are nice-to-have: a missing summary.json must not block the map.
       fetch('data/summary.json').then((r) => r.json() as Promise<SummaryFile>).catch(() => null),
     ]).then(([stationsData, connectionsData, finlandData, patternsData, summaryData]) => {
       if (cancelled) return
-      setStations(stationsData)
+      setBaseStations(stationsData)
       setConnections(connectionsData)
       setFinland(finlandData)
       setPatterns(patternsData)
@@ -75,17 +84,48 @@ export default function App() {
   // A different station or route means the open weather pop-up no longer applies.
   useEffect(() => { setWeatherPin(null) }, [selected, routeStart, routeEnd])
 
-  const needsEmsWeather = weatherPin !== null || selected?.ems != null || (routeStart !== null && routeEnd !== null)
+  const scope = scopeOf(year)
+  const yearIndex = year === null || !summary ? null : summary.years.indexOf(year)
+  const period = periodLabel(summary?.years ?? null, year)
+
+  // A picked year's station figures load once; until they arrive the whole-period figures stay.
   useEffect(() => {
-    if (!needsEmsWeather || emsWeather) return
+    if (year === null || yearStations[scope]) return
+    let cancelled = false
+    fetch(`data/scope/${scope}/stations_stats.json`)
+      .then((r) => r.json() as Promise<Record<string, StationStats>>)
+      .then((data) => { if (!cancelled) setYearStations((prev) => ({ ...prev, [scope]: data })) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [year, scope, yearStations])
+
+  // The stations as drawn: the whole period's figures, or the picked year's. A station no train
+  // stopped at that year is left out, so it is neither drawn nor offered in the pickers.
+  const stations = useMemo(() => {
+    const stats = yearStations[scope]
+    if (year === null || !stats) return baseStations
+    return baseStations.flatMap((s) => (stats[s.code] ? [{ ...s, ...stats[s.code] }] : []))
+  }, [baseStations, year, scope, yearStations])
+  // A new year gives the selected station and the route ends fresh figures (or drops them).
+  useEffect(() => {
+    const fresh = (prev: StationFeature | null) => (prev ? stations.find((s) => s.code === prev.code) ?? null : null)
+    setSelected(fresh)
+    setRouteStart(fresh)
+    setRouteEnd(fresh)
+  }, [stations])
+
+  // The weather station's detail file, loaded when its pop-up opens.
+  const emsFile = weatherPin?.ems.file
+  useEffect(() => {
+    if (!emsFile || emsFiles[emsFile]) return
     let cancelled = false
     setEmsFailed(false)
-    fetch('data/ems_weather.json')
-      .then((r) => r.json() as Promise<EmsWeatherFile>)
-      .then((data) => { if (!cancelled) setEmsWeather(data) })
+    fetch(`data/ems/${emsFile}.json`)
+      .then((r) => r.json() as Promise<EmsStationFile>)
+      .then((data) => { if (!cancelled) setEmsFiles((prev) => ({ ...prev, [emsFile]: data })) })
       .catch(() => { if (!cancelled) setEmsFailed(true) })
     return () => { cancelled = true }
-  }, [needsEmsWeather, emsWeather])
+  }, [emsFile, emsFiles])
 
   // A different pair of stations (or clearing/swapping) means the open details no longer apply.
   useEffect(() => { setDetailIndex(null) }, [routeStart, routeEnd])
@@ -102,26 +142,38 @@ export default function App() {
   }, [connections])
 
   const routeResult = useMemo(
-    () => (routeStart && routeEnd ? findRoutes(patterns, routeStart.code, routeEnd.code) : null),
-    [patterns, routeStart, routeEnd],
+    () => (routeStart && routeEnd ? findRoutes(patterns, routeStart.code, routeEnd.code, yearIndex) : null),
+    [patterns, routeStart, routeEnd, yearIndex],
   )
   const routeHighlight = useMemo(
     () => (routeStart && routeEnd && routeResult ? toHighlight(routeResult, routeStart.code, routeEnd.code, coords) : null),
     [routeResult, routeStart, routeEnd, coords],
   )
 
-  // route_stats.json is loaded lazily, the first time a route appears: the map badges and the
-  // route details pop-up both need it.
+  // The route statistics of the picked period load the first time a route appears (and again, once,
+  // for each other year picked): the map badges and the route details pop-up both need them.
+  const routeStats = routeStatsByScope[scope] ?? null
   useEffect(() => {
     if (routeResult === null || routeStats) return
     let cancelled = false
     setStatsFailed(false)
-    fetch('data/route_stats.json')
+    fetch(`data/scope/${scope}/route_stats.json`)
       .then((r) => r.json() as Promise<RouteStatsFile>)
-      .then((data) => { if (!cancelled) setRouteStats(data) })
+      .then((data) => { if (!cancelled) setRouteStatsByScope((prev) => ({ ...prev, [scope]: data })) })
       .catch(() => { if (!cancelled) setStatsFailed(true) })
     return () => { cancelled = true }
-  }, [routeResult, routeStats])
+  }, [routeResult, routeStats, scope])
+
+  // Month-by-month delays of every service: only needed once the route pop-up is open.
+  useEffect(() => {
+    if (detailIndex === null || routeTrends) return
+    let cancelled = false
+    fetch('data/route_trends.json')
+      .then((r) => r.json() as Promise<RouteTrendsFile>)
+      .then((data) => { if (!cancelled) setRouteTrends(data) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [detailIndex, routeTrends])
 
   // Typical delay at each station of the highlighted routes, for the map badges (empty until the
   // statistics have loaded, so badges first show "–" and then fill in).
@@ -132,33 +184,32 @@ export default function App() {
   }, [routeResult, routeStats, stations])
 
   // Weather pins. Route mode: one per weather station on the route, with the route's own trains'
-  // temperature and snow depth. Otherwise the selected station's weather station, January average.
+  // temperature and snow depth. Otherwise the selected station's weather station, its average.
   const stationNames = useMemo(() => new Map(stations.map((s) => [s.code, s.name.replace(/ asema$/, '')])), [stations])
   const routePins = useMemo(
     () =>
       routeResult && routeStats && routeHighlight
-        ? routeWeatherPins(routeResult.paths, routeStats, stations, stationNames, emsWeather, routeHighlight.start, routeHighlight.end)
+        ? routeWeatherPins(routeResult.paths, routeStats, stations, stationNames, routeHighlight.start, routeHighlight.end)
         : [],
-    [routeResult, routeStats, routeHighlight, stations, stationNames, emsWeather],
+    [routeResult, routeStats, routeHighlight, stations, stationNames],
   )
   const selectedPin = useMemo<WeatherPin | null>(() => {
     if (!selected?.ems) return null
-    const january = emsWeather?.stations[selected.ems.name]
     return {
       key: selected.ems.name,
       ems: selected.ems,
-      scope: 'month',
+      scope: 'station',
       stationNames: [stationNames.get(selected.code) ?? selected.name],
       stationCodes: [selected.code],
-      temp: january?.temp.avg ?? null,
-      snow: january?.snow.avg ?? null,
+      temp: selected.weather?.avgTemp ?? null,
+      snow: selected.weather?.avgSnow ?? null,
       own: true,
       isEnd: false,
     }
-  }, [selected, emsWeather, stationNames])
+  }, [selected, stationNames])
 
   // The temperature / snow profile the chart draws as the train runs: the route's own trains' means at
-  // each passenger stop (as on the pins), the weather station's January average where there is none.
+  // each passenger stop (as on the pins), the station's own average where there is none.
   const liveProfile = useMemo(() => {
     const path = routeResult?.paths[0]
     if (!live || !path || !routeStats) return null
@@ -171,15 +222,14 @@ export default function App() {
       let temp = row?.temp ?? null
       let snow = row?.snow ?? null
       if (temp === null) {
-        const ems = stationByCode.get(stop.code)?.ems
-        const january = ems ? emsWeather?.stations[ems.name] : undefined
-        temp = january?.temp.avg ?? null
-        snow = snow ?? january?.snow.avg ?? null
+        const here = stationByCode.get(stop.code)?.weather
+        temp = here?.avgTemp ?? null
+        snow = snow ?? here?.avgSnow ?? null
       }
       values.set(stop.code, { temp, snow })
     }
     return buildLiveProfile(stops, live.route.totalKm, values)
-  }, [live, routeResult, routeStats, stationNames, stations, emsWeather])
+  }, [live, routeResult, routeStats, stationNames, stations])
 
   // The delay chart's bars: the same figure the delay badges showed on the map for each stop.
   const liveDelayProfile = useMemo(() => {
@@ -217,6 +267,8 @@ export default function App() {
     setRouteEnd(null)
     setDetailIndex(null)
     setWeatherPin(null)
+    setTrendsOpen(false)
+    setYear(null)
     setResetSignal((n) => n + 1)
   }, [])
 
@@ -274,7 +326,7 @@ export default function App() {
           the weather chart take the left edge instead. */}
       {!live && (
       <SideColumn>
-        <MonthSummary summary={summary} />
+        <PeriodSummary summary={summary} year={year} onYear={setYear} onOpenTrends={() => setTrendsOpen(true)} />
         <RouteFinder
           stations={stations}
           start={routeStart}
@@ -288,6 +340,7 @@ export default function App() {
               patterns,
               new Map(stations.map((s) => [s.code, { lat: s.lat, lon: s.lon }])),
               routeStart && routeEnd ? { start: routeStart.code, end: routeEnd.code } : null,
+              yearIndex,
             )
             if (!pick) return
             setRouteStart(stations.find((s) => s.code === pick.start) ?? null)
@@ -296,6 +349,7 @@ export default function App() {
           onClear={() => { setRouteStart(null); setRouteEnd(null) }}
           onLive={() => (live ? setLive(null) : startLive())}
           liveRunning={live !== null}
+          period={period}
         />
         <StationSelect stations={stations} selected={selected} onSelect={setSelected} />
       </SideColumn>
@@ -364,19 +418,31 @@ export default function App() {
           stations={stations}
           stats={routeStats}
           loadFailed={statsFailed}
-          weatherBands={summary?.weather?.bands ?? null}
+          period={period}
+          year={year}
+          conditionDefs={summary?.conditions ?? null}
+          trends={routeTrends}
           onClose={() => setDetailIndex(null)}
         />
       )}
 
-      {selected && <StationPanel station={selected} onClose={() => setSelected(null)} onShowWeather={() => selectedPin && setWeatherPin(selectedPin)} />}
+      {selected && (
+        <StationPanel
+          station={selected}
+          onClose={() => setSelected(null)}
+          onShowWeather={() => selectedPin && setWeatherPin(selectedPin)}
+          period={period}
+          conditionDefs={summary?.conditions ?? null}
+        />
+      )}
 
       {weatherPin && (
         <WeatherStationDetails
           ems={weatherPin.ems}
           stationName={weatherPin.stationNames[0]}
-          weather={emsWeather?.stations[weatherPin.ems.name] ?? null}
-          dates={emsWeather?.dates ?? []}
+          file={emsFiles[weatherPin.ems.file] ?? null}
+          scope={scope}
+          period={period}
           loadFailed={emsFailed}
           routeNote={
             weatherPin.scope === 'route' && weatherPin.own
@@ -386,6 +452,8 @@ export default function App() {
           onClose={() => setWeatherPin(null)}
         />
       )}
+
+      {trendsOpen && summary && <DelayTrends summary={summary} year={year} onYear={setYear} onClose={() => setTrendsOpen(false)} />}
 
       {/* Until the first tiles arrive the basemap is flat navy, which reads as broken. */}
       <div

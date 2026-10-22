@@ -74,7 +74,7 @@ export const ROUTE_BADGE_ICON = {
 // upper half is navy and carries the temperature (white numerals), the lower half is ice blue and
 // carries the snow depth (navy numerals) -- literally snow-coloured, and no new hue: colour on this
 // map is reserved for delay. The grey variant (outline and lower half) means "no figure for this
-// route's own trains, the station's January average is shown", the grey of the delay badges'
+// route's own trains, the average at the nearby stations is shown", the grey of the delay badges'
 // fallback ring. The numerals are written on top by TextLayers (see Map.tsx), so the divider sits
 // between the two text lines. Full colour, not a mask. Anchored at the pin's tip.
 const WS_SIZE = 64

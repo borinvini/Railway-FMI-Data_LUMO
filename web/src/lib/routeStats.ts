@@ -1,5 +1,5 @@
 import { distanceKm } from './routeFinder'
-import type { EmsWeatherFile, RoutePath, RouteStatsFile, StationFeature, WeatherCell, WeatherPin } from './types'
+import type { ConditionCell, Conditions, RoutePath, RouteStatsFile, StationFeature, WeatherPin } from './types'
 
 export interface ServiceRow {
   id: string
@@ -39,15 +39,9 @@ export interface RouteSummary {
   /** Services on this route that have no saved statistics (should be none). */
   missingServices: number
   insights: string[]
-  /** Arrivals by weather band, pooled over the route's services; null per band when empty. */
-  weather: { t: (WeatherRow | null)[]; s: (WeatherRow | null)[] }
-}
-
-export interface WeatherRow {
-  /** Arrivals in this band, mean minutes late, and the share more than 5 min late. */
-  n: number
-  avg: number
-  latePct: number
+  /** Weather conditions pooled over the route's services (arrivals, % late, extra late per 100 than
+   *  usual); a condition with no service reporting it is absent. */
+  weather: Conditions
 }
 
 const stripAsema = (s: string) => s.replace(/ asema$/, '')
@@ -137,24 +131,27 @@ export function summarizeRoute(
     stops,
     missingServices: path.sources.length - found.length,
     insights: stopInsights(stops),
-    weather: {
-      t: [0, 1, 2].map((band) => poolWeather(found.map((f) => f.stat.w?.t[band] ?? null))),
-      s: [0, 1, 2].map((band) => poolWeather(found.map((f) => f.stat.w?.s[band] ?? null))),
-    },
+    weather: poolConditions(found.map((f) => f.stat.w)),
   }
 }
 
-/** Pool one band across services: weight by arrivals, which pools means and percentages
- *  exactly. Bands the build already suppressed (null) simply don't contribute. */
-function poolWeather(cells: (WeatherCell | null)[]): WeatherRow | null {
-  const real = cells.filter((c): c is WeatherCell => c !== null)
-  const n = real.reduce((sum, c) => sum + c[0], 0)
-  if (n === 0) return null
-  return {
-    n,
-    avg: real.reduce((sum, c) => sum + c[1] * c[0], 0) / n,
-    latePct: real.reduce((sum, c) => sum + c[2] * c[0], 0) / n,
+/** Pool each weather condition across services: weight by arrivals, which pools the share late and
+ *  the extra-late figure exactly (both are means over the same arrivals). Conditions the build
+ *  already suppressed simply don't contribute. */
+function poolConditions(all: (Conditions | null)[]): Conditions {
+  const out: Conditions = {}
+  const keys = new Set(all.flatMap((c) => (c ? Object.keys(c) : [])))
+  for (const key of keys) {
+    const cells = all.flatMap((c) => (c?.[key] ? [c[key] as ConditionCell] : []))
+    const n = cells.reduce((sum, c) => sum + c[0], 0)
+    if (n === 0) continue
+    out[key] = [
+      n,
+      cells.reduce((sum, c) => sum + c[1] * c[0], 0) / n,
+      cells.reduce((sum, c) => sum + c[2] * c[0], 0) / n,
+    ]
   }
+  return out
 }
 
 const min1 = (v: number) => `${v.toFixed(1)} min`
@@ -279,15 +276,14 @@ export function routeStationValues(
  * One weather pin per distinct weather station serving the highlighted route's passenger stops.
  * The numbers are the mean temperature and snow depth when *this route's own* trains were at the
  * stops the station serves (pooled across stops by number of readings), like the per-route delay
- * badges. Where the route's trains have no figure the station's January average is used instead
- * (`own: false`). `names` maps station code to display name; `start`/`end` are the route ends.
+ * badges. Where the route's trains have no figure the average at the train stations the weather
+ * station serves is used instead (`own: false`). `names` maps station code to display name; `start`/`end` are the route ends.
  */
 export function routeWeatherPins(
   paths: RoutePath[],
   stats: RouteStatsFile,
   stations: StationFeature[],
   names: Map<string, string>,
-  emsWeather: EmsWeatherFile | null,
   start: string,
   end: string,
 ): WeatherPin[] {
@@ -333,15 +329,23 @@ export function routeWeatherPins(
 
   return [...groups.entries()].map(([name, g]) => {
     const own = g.n > 0
-    const january = emsWeather?.stations[name]
+    // No figure from the route's own trains: the average at the train stations this one serves.
+    const served = g.codes.flatMap((c) => {
+      const w = byCode.get(c)?.weather
+      return w ? [w] : []
+    })
+    const avgOf = (pick: (w: (typeof served)[number]) => number | null) => {
+      const vals = served.map(pick).filter((v): v is number => v !== null)
+      return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null
+    }
     return {
       key: name,
       ems: g.station.ems!,
       scope: 'route' as const,
       stationNames: [g.station.code, ...g.codes.filter((c) => c !== g.station.code)].map((c) => names.get(c) ?? c),
       stationCodes: g.codes,
-      temp: own ? g.tempSum / g.n : january?.temp.avg ?? null,
-      snow: own ? (g.snowN > 0 ? g.snowSum / g.snowN : null) : january?.snow.avg ?? null,
+      temp: own ? g.tempSum / g.n : avgOf((w) => w.avgTemp),
+      snow: own ? (g.snowN > 0 ? g.snowSum / g.snowN : null) : avgOf((w) => w.avgSnow),
       own,
       isEnd: g.codes.includes(start) || g.codes.includes(end),
     }

@@ -15,7 +15,7 @@ interface LiveCardProps {
 /**
  * The now-playing card for a Live run: where the train is and that stop's figures, as the quick
  * read from across the room (the markers on the map stay the main thing). Honest about what this
- * is: a time-lapse of a typical trip built from January averages, not real time.
+ * is: a time-lapse of a typical trip built from averages, not real time.
  */
 export default function LiveCard({ stopName, delay, temp, snow, reached, total, onStop }: LiveCardProps) {
   const figures = [
@@ -28,7 +28,7 @@ export default function LiveCard({ stopName, delay, temp, snow, reached, total, 
     <div className="pointer-events-auto rounded-[10px] border border-(--line) bg-(--surface) px-[18px] py-3.5 backdrop-blur-[8px]">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-sm text-(--muted)">A typical trip, January averages</div>
+          <div className="text-sm text-(--muted)">A typical trip, built from averages</div>
           <div className="font-board mt-0.5 truncate text-[28px] leading-tight font-semibold text-(--text)">
             {stopName ?? 'Getting ready…'}
           </div>

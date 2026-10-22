@@ -113,7 +113,7 @@ interface MapProps {
   /** Weather pins for the highlighted route: one per distinct weather station, with the route's own
    *  trains' figures. Thinned here by screen distance. */
   weatherPins: WeatherPin[]
-  /** The selected station's weather station, with its January average (null if none). */
+  /** The selected station's weather station, with the station's average at train times (null if none). */
   selectedWeatherPin: WeatherPin | null
   /** The "Hide weather stations" switch: false hides the route's pins. */
   showWeather: boolean
@@ -485,9 +485,9 @@ export default function MapView({ stations, connections, finland, selected, onSe
       ...liveTrail,
       // Weather pins: a navy map pin whose tip is the weather station's real location, with the
       // temperature and snow depth written in its head (see lib/markerIcon.ts). In a route they
-      // are the route's own trains' figures, for a selected station its January average. Drawn
+      // are the route's own trains' figures, for a selected station its average. Drawn
       // under the delay badges so a badge is never hidden; flat overlay like the badges, so they
-      // never z-fight with the lines. Clickable, which opens the January weather pop-up.
+      // never z-fight with the lines. Clickable, which opens the weather pop-up.
       new PathLayer<{ path: [number, number][]; strong: boolean }>({
         id: 'ems-links', data: links,
         parameters: { depthCompare: 'always' },
@@ -691,13 +691,13 @@ export default function MapView({ stations, connections, finland, selected, onSe
             const pin = object as WeatherPin
             const t = `${formatTemp(pin.temp)}C`
             const snow = pin.snow === null ? 'no snow figure' : `${formatSnow(pin.snow)} of snow`
-            if (pin.scope === 'month') {
-              text = `${pin.ems.name} weather station\n${pin.ems.km.toFixed(1)} km away\nJanuary average: ${t}, ${snow}\nClick for January weather`
+            if (pin.scope === 'station') {
+              text = `${pin.ems.name} weather station\n${pin.ems.km.toFixed(1)} km away\nAverage at train times: ${t}, ${snow}\nClick for the weather`
             } else {
               const figures = pin.own
                 ? `${t} on average, ${snow},\nwhen this route's trains were there`
-                : `January average: ${t}, ${snow}\n(no figure for this route's own trains)`
-              text = `${pin.ems.name} weather station\n${figures}\nServes ${pin.stationNames.join(', ')}\nClick for January weather`
+                : `Average at nearby stations: ${t}, ${snow}\n(no figure for this route's own trains)`
+              text = `${pin.ems.name} weather station\n${figures}\nServes ${pin.stationNames.join(', ')}\nClick for the weather`
             }
           } else {
             const station = object as StationFeature

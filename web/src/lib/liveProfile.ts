@@ -3,7 +3,7 @@
  * the train runs. Pure: the points are the route's passenger stops (distance from the start, mean
  * temperature and snow depth of the route's own trains there), and `profileUpTo` returns what to
  * draw for a given distance: every stop already passed plus an interpolated head at the train.
- * These are January averages at each stop, met in the order the train meets them -- not readings.
+ * These are averages at each stop, met in the order the train meets them -- not readings.
  */
 
 export interface ProfilePoint {
@@ -94,7 +94,7 @@ export function buildLiveProfile(
 export interface DelayProfile {
   /** Distance from the start at each stop that has a figure, km. */
   km: number[]
-  /** Monthly average delay at each of those stops, minutes (early = 0). */
+  /** Average delay at each of those stops, minutes (early = 0). */
   delay: number[]
   totalKm: number
   startName: string

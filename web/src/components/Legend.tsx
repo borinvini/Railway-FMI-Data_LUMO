@@ -53,7 +53,7 @@ export default function Legend({ routeMode, weatherShown }: { routeMode: boolean
   if (routeMode) {
     return (
       <div className="w-[280px] rounded-[10px] border border-(--line) bg-(--surface) px-[18px] py-4 backdrop-blur-[8px]">
-        <div className="mb-2.5 text-sm text-(--muted)">Monthly average delay at this stop on the route</div>
+        <div className="mb-2.5 text-sm text-(--muted)">Average delay at this stop on the route</div>
         <ul className="m-0 flex list-none flex-col gap-2 p-0 text-sm text-(--muted)">
           {ROUTE_BADGE_STEPS.map((step, i) => (
             <li key={step.label} className="flex items-center gap-2.5">
@@ -89,7 +89,7 @@ export default function Legend({ routeMode, weatherShown }: { routeMode: boolean
 
   return (
     <div className="w-[260px] rounded-[10px] border border-(--line) bg-(--surface) px-[18px] py-4 backdrop-blur-[8px]">
-      <div className="text-sm text-(--muted)">Monthly average delay at this station</div>
+      <div className="text-sm text-(--muted)">Average delay at this station</div>
       <div
         className="my-2 h-1.5 rounded-full"
         style={{ background: `linear-gradient(90deg, ${DELAY_RAMP_HEX.join(', ')})` }}

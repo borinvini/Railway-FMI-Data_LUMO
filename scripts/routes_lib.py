@@ -11,8 +11,10 @@ this machine (see CLAUDE.md gotchas). Always run with the project-local venv.
 from __future__ import annotations
 
 import glob
+import hashlib
 import json
 import os
+import re
 from pathlib import Path
 
 import numpy as np
@@ -37,6 +39,9 @@ COLUMNS = [
     "closest_ems",
     "Gust speed",
     "Horizontal visibility",
+    # Only used by scripts/analyse_weather.py.
+    "Wind speed",
+    "Precipitation intensity",
 ]
 
 # "On time" threshold used throughout the project (CLAUDE.md delay convention).
@@ -47,27 +52,23 @@ ON_TIME_THRESHOLD_MIN = 5
 #   major delay: >  MINOR_DELAY_THRESHOLD_MIN
 MINOR_DELAY_THRESHOLD_MIN = 15
 
-# Weather bands shown on the site. Only temperature and snow depth: wind runs the *wrong way*
-# in this data (calm, cold nights are the late ones), precipitation is non-monotonic, and
-# "Precipitation amount" is 86% empty -- see CLAUDE.md "Weather". Edges are right-inclusive
-# (value <= edge goes in the lower band). Snow depth is whole cm, and -1 / 0 both mean none,
-# so "<= 0" is "no snow" and "> 9" is "10 cm or more".
-WEATHER_BANDS = {
-    "t": {
-        "column": "Air temperature",
-        "edges": [-5.0, 2.0],
-        "labels": ["Frost (-5°C or colder)", "Around freezing (-5 to 2°C)", "Mild (above 2°C)"],
-    },
-    "s": {
-        "column": "Snow depth",
-        "edges": [0.0, 9.0],
-        "labels": ["No snow", "A little snow (1-9 cm)", "Deep snow (10 cm or more)"],
-    },
-}
-# A band with fewer arrivals than this is never shown as a number.
-MIN_WEATHER_ARRIVALS = 30
-# Stations need this many arrivals in *both* groups to enter the pooled same-station comparison.
-MIN_POOLED_ARRIVALS = 50
+# Weather conditions shown on the site, each judged *like for like*: an arrival's baseline is the
+# late rate of every arrival at the same station, in the same actual month (e.g. January 2019)
+# and the same part of the day, so geography, season, year-to-year differences (track works, a
+# strike) and busy hours cannot produce a gap by themselves. See scripts/analyse_weather.py for
+# the analysis behind the choice. Wind is shown only as strong gusts: general wind speed is flat.
+# A condition is a rule on one weather column; they overlap on purpose (hard frost is also frost).
+CONDITIONS = [
+    {"key": "hardFrost", "label": "Hard frost", "detail": "-15°C or colder", "column": "Air temperature", "op": "<=", "value": -15.0},
+    {"key": "frost", "label": "Frost", "detail": "-5°C or colder", "column": "Air temperature", "op": "<=", "value": -5.0},
+    {"key": "heat", "label": "Hot weather", "detail": "above 25°C", "column": "Air temperature", "op": ">", "value": 25.0},
+    {"key": "precip", "label": "Rain or snow falling", "detail": "any precipitation", "column": "Precipitation intensity", "op": ">", "value": 0.0},
+    {"key": "gust", "label": "Strong gusts", "detail": "stronger than 16 m/s", "column": "Gust speed", "op": ">", "value": 16.0},
+    {"key": "deepSnow", "label": "Deep snow", "detail": "25 cm or more on the ground", "column": "Snow depth", "op": ">=", "value": 25.0},
+]
+# A condition with fewer arrivals than this is never shown as a number: the extra-late figure
+# is a small difference between two shares, so it needs many arrivals to be steady.
+MIN_CONDITION_ARRIVALS = 200
 
 
 def find_parquets(explicit: str | None = None) -> list[Path]:
@@ -122,23 +123,94 @@ def _fix_mojibake_column(series: pd.Series) -> pd.Series:
     return series.map(mapping).fillna(series)
 
 
-def load_events(paths: list[Path]) -> pd.DataFrame:
-    """Read and concatenate the needed columns from one or more parquet files."""
+CACHE_DIR = Path(__file__).resolve().parent.parent / "data" / "derived" / "cache"
+# Columns stored as pandas categoricals once loaded (few distinct values, millions of rows).
+_CATEGORY_COLUMNS = [
+    "trainType", "stationShortCode", "stationName", "type", "closest_ems", "departureDate", "month",
+]
+_EPOCH = pd.Timestamp("2000-01-01")
+RUN_KEY_STRIDE = 100_000  # train numbers are 1..99999
+
+
+def run_key(df: pd.DataFrame) -> pd.Series:
+    """Integer id of a train run (departure date + train number). Same role as the old
+    "<date>_<number>" string, but cheap to build and compare on tens of millions of rows."""
+    return df["dayNum"].astype("int64") * RUN_KEY_STRIDE + df["trainNumber"].astype("int64")
+
+
+def _cache_path(src: Path) -> Path:
+    return CACHE_DIR / f"{src.stem}.parquet"
+
+
+def _compact_month(src: Path) -> pd.DataFrame:
+    """One source parquet -> compact frame (small dtypes, repaired text, day number)."""
+    df = ParquetFile(str(src)).to_pandas(columns=COLUMNS)
+    df["stationShortCode"] = _fix_mojibake_column(df["stationShortCode"])
+    df["stationName"] = _fix_mojibake_column(df["stationName"])
+    df["scheduledTime"] = pd.to_datetime(df["scheduledTime"], errors="coerce", utc=True).dt.tz_localize(None)
+    dep = pd.to_datetime(df["departureDate"].astype(str).str.slice(0, 10))
+    df["dayNum"] = ((dep - _EPOCH).dt.days).astype("int32")
+    df["departureDate"] = df["departureDate"].astype(str).str.slice(0, 10)
+    df["month"] = df["departureDate"].str.slice(0, 7)
+    df["trainNumber"] = df["trainNumber"].astype("int32")
+    for c in (
+        "differenceInMinutes", "Air temperature", "Snow depth", "Gust speed", "Horizontal visibility",
+        "Wind speed", "Precipitation intensity",
+    ):
+        df[c] = df[c].astype("float32")
+    for c in _CATEGORY_COLUMNS:
+        df[c] = df[c].astype(object).where(df[c].notna(), None)
+    return df
+
+
+def _read_month(src: Path) -> pd.DataFrame:
+    """Compact frame for one month, via the on-disk cache (keyed on source size and mtime)."""
+    cache = _cache_path(src)
+    stamp = Path(str(cache) + ".stamp")
+    st = src.stat()
+    cols = hashlib.md5(",".join(COLUMNS).encode()).hexdigest()[:8]
+    key = f"{st.st_size}:{int(st.st_mtime)}:{cols}"
+    if cache.exists() and stamp.exists() and stamp.read_text() == key:
+        df = ParquetFile(str(cache)).to_pandas()
+    else:
+        df = _compact_month(src)
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        from fastparquet import write
+
+        write(str(cache), df, object_encoding="utf8")
+        stamp.write_text(key)
+    for c in _CATEGORY_COLUMNS:
+        df[c] = df[c].astype("category")
+    return df
+
+
+def load_events(paths: list[Path], years: list[int] | None = None) -> pd.DataFrame:
+    """Read the needed columns of one or more monthly parquets as one compact frame.
+
+    Each month is cached under data/derived/cache/ (small dtypes, text repaired) so the
+    ~48M rows of 2018-2025 fit in memory and reload quickly. `years` keeps only those years.
+    Files are split by departure date, so a run never spans two files.
+    """
+    from pandas.api.types import union_categoricals
+
     frames = []
     for p in paths:
-        pf = ParquetFile(str(p))
-        df = pf.to_pandas(columns=COLUMNS)
-        frames.append(df)
+        m = re.search(r"(\d{4})_(\d{2})", p.stem)
+        if years is not None and m and int(m.group(1)) not in years:
+            continue
+        frames.append(_read_month(p))
+    if not frames:
+        raise FileNotFoundError("No parquet files match the requested years")
 
-    events = pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
-
-    events["month"] = events["departureDate"].astype(str).str.slice(0, 7)
-
-    events["stationShortCode"] = _fix_mojibake_column(events["stationShortCode"])
-    events["stationName"] = _fix_mojibake_column(events["stationName"])
-
-    events["scheduledTime"] = pd.to_datetime(events["scheduledTime"], errors="coerce")
-
+    out = {}
+    for c in frames[0].columns:
+        if c in _CATEGORY_COLUMNS:
+            out[c] = union_categoricals([f[c] for f in frames])
+        else:
+            out[c] = np.concatenate([f[c].to_numpy() for f in frames])
+    events = pd.DataFrame(out)
+    events["year"] = events["month"].astype(str).str.slice(0, 4).astype("int16")
+    assert events["trainNumber"].max() < RUN_KEY_STRIDE
     return events
 
 
@@ -165,9 +237,7 @@ def derive_routes(events: pd.DataFrame) -> pd.DataFrame:
     run (all stations, not filtered yet).
     """
     events = events.dropna(subset=["scheduledTime"]).copy()
-    events["runKey"] = (
-        events["departureDate"].astype(str) + "_" + events["trainNumber"].astype(str)
-    )
+    events["runKey"] = run_key(events)
 
     events_sorted = events.sort_values(["runKey", "scheduledTime"])
 
@@ -179,8 +249,12 @@ def derive_routes(events: pd.DataFrame) -> pd.DataFrame:
     n_stations = events_sorted.groupby("runKey", sort=False)["stationShortCode"].nunique()
 
     # Full ordered stop sequence per run (all stations, deduped consecutive).
-    stop_sequences = events_sorted.groupby("runKey", sort=False)["stationShortCode"].agg(
-        lambda s: _ordered_unique(s.tolist())
+    st_codes = events_sorted["stationShortCode"].astype("category").cat.codes
+    changed = (events_sorted["runKey"] != events_sorted["runKey"].shift()) | (st_codes != st_codes.shift())
+    stop_sequences = (
+        events_sorted.loc[changed].groupby("runKey", sort=False)["stationShortCode"].agg(
+            lambda s: tuple(s.astype(object))
+        )
     )
 
     # Arrival delay stats, early arrivals clamped to 0.
@@ -195,14 +269,15 @@ def derive_routes(events: pd.DataFrame) -> pd.DataFrame:
     runs = pd.DataFrame(
         {
             "runKey": firsts.index,
-            "departureDate": firsts["departureDate"].values,
+            "departureDate": firsts["departureDate"].astype(object).values,
             "trainNumber": firsts["trainNumber"].values,
-            "trainType": firsts["trainType"].values,
-            "month": firsts["month"].values,
-            "from": firsts["stationShortCode"].values,
-            "fromName": firsts["stationName"].values,
-            "to": lasts["stationShortCode"].values,
-            "toName": lasts["stationName"].values,
+            "trainType": firsts["trainType"].astype(object).values,
+            "month": firsts["month"].astype(object).values,
+            "year": firsts["year"].astype("int16").values,
+            "from": firsts["stationShortCode"].astype(object).values,
+            "fromName": firsts["stationName"].astype(object).values,
+            "to": lasts["stationShortCode"].astype(object).values,
+            "toName": lasts["stationName"].astype(object).values,
             "stops": n_stations.values,
             "anyCancelled": any_cancelled.values,
         }
@@ -304,7 +379,6 @@ def aggregate(
                 "worstDay": g.loc[worst_idx, "departureDate"] if worst_idx is not None else None,
                 "firstDate": g["departureDate"].min(),
                 "lastDate": g["departureDate"].max(),
-                "month": g["month"].iloc[0],
             }
         )
         rows.append(row)
@@ -341,7 +415,6 @@ def aggregate(
         "worstDay",
         "firstDate",
         "lastDate",
-        "month",
     ]
 
     if station_meta is not None:
@@ -506,7 +579,7 @@ def station_network_edges(runs: pd.DataFrame, station_meta: pd.DataFrame) -> pd.
     counts["fromName"] = counts["from"].map(lambda c: name_lookup.get(c, c))
     counts["toName"] = counts["to"].map(lambda c: name_lookup.get(c, c))
     return counts[["from", "to", "fromName", "toName", "runs"]].sort_values(
-        "runs", ascending=False
+        ["runs", "from", "to"], ascending=[False, True, True]
     ).reset_index(drop=True)
 
 
@@ -533,9 +606,7 @@ def station_level_stats(
     by = list(by)
     arrivals = events[events["type"] == "ARRIVAL"].copy()
     arrivals["clampedDelay"] = arrivals["differenceInMinutes"].clip(lower=0)
-    arrivals["runKey"] = (
-        arrivals["departureDate"].astype(str) + "_" + arrivals["trainNumber"].astype(str)
-    )
+    arrivals["runKey"] = run_key(arrivals)
     # Drop any of `by`'s columns already present on `events` (e.g. trainType) so
     # the merge below attaches the run's own route-group values unambiguously,
     # instead of colliding and getting _x/_y suffixes.
@@ -620,7 +691,6 @@ def station_summary(
     out = out.join(delay_stats, how="left")
     out["runs"] = out["runs"].fillna(0).astype(int)
 
-    out["month"] = runs["month"].iloc[0] if len(runs) else None
     out = out.reset_index().rename(columns={"stationShortCode": "code"})
 
     ordered_cols = [
@@ -628,37 +698,56 @@ def station_summary(
         "appearances", "distinctRoutes", "distinctTrainTypes",
         "runs", "avgDelay", "medianDelay", "p90Delay", "maxDelay", "delayStdDev",
         "onTimePct", "pctMinorDelay", "pctMajorDelay", "avgMinorDelay", "avgMajorDelay",
-        "cancelledPct", "firstDate", "lastDate", "month",
+        "cancelledPct", "firstDate", "lastDate",
     ]
     out = out[ordered_cols]
     return out.sort_values("appearances", ascending=False).reset_index(drop=True)
 
 
-def weather_arrivals(events: pd.DataFrame, runs: pd.DataFrame, by=()) -> pd.DataFrame:
-    """ARRIVAL events with a usable delay, tagged with their weather bands.
-
-    Same filter and `runKey` merge as `station_level_stats`, so a station's weather numbers
-    cover exactly the arrivals its delay numbers do. Adds `late` (> ON_TIME_THRESHOLD_MIN,
-    the complement of "on time"), `clampedDelay`, and one band index per entry of
-    WEATHER_BANDS (`band_t`, `band_s`; -1 where the reading is missing). Weather is the
-    reading of the FMI station closest to the train station, at the time of the event.
-    """
-    by = list(by)
-    arrivals = events[events["type"] == "ARRIVAL"].dropna(subset=["differenceInMinutes"]).copy()
-    arrivals["clampedDelay"] = arrivals["differenceInMinutes"].clip(lower=0)
-    arrivals["late"] = arrivals["differenceInMinutes"] > ON_TIME_THRESHOLD_MIN
-    arrivals["runKey"] = (
-        arrivals["departureDate"].astype(str) + "_" + arrivals["trainNumber"].astype(str)
+def prepare_arrivals(events: pd.DataFrame) -> pd.DataFrame:
+    """Every ARRIVAL with a delay value, with what the weather figures need, computed once for the
+    whole dataset: `late` (> ON_TIME_THRESHOLD_MIN), `clampedDelay`, `ex` (late minus the late
+    rate of the same station, actual month and part of the day: the like-for-like baseline,
+    taken over *all* trains so a single route's figure is not its own baseline) and one boolean
+    `f_<key>` per entry of CONDITIONS. `temp` / `snow` are the readings (snow below 0 = none)."""
+    a = events[events["type"] == "ARRIVAL"].dropna(subset=["differenceInMinutes"]).reset_index(drop=True)
+    diff = a["differenceInMinutes"].to_numpy(dtype="float32")
+    out = pd.DataFrame(
+        {
+            "runKey": run_key(a).to_numpy(),
+            "stationShortCode": a["stationShortCode"].astype("category"),
+            "month": a["month"].astype("category"),
+            "year": a["year"].to_numpy(),
+            "clampedDelay": np.clip(diff, 0, None),
+            "late": (diff > ON_TIME_THRESHOLD_MIN).astype("float32"),
+            "temp": a["Air temperature"].to_numpy(),
+            "snow": a["Snow depth"].clip(lower=0).to_numpy(),
+        }
     )
-    arrivals = arrivals.drop(columns=[c for c in by if c in arrivals.columns])
-    route_of_run = runs[["runKey"] + by].drop_duplicates("runKey")
-    arrivals = arrivals.merge(route_of_run, on="runKey", how="inner")
+    part = (a["scheduledTime"].dt.hour.fillna(0).to_numpy() // 6).astype("int8")
+    cell = pd.DataFrame(
+        {
+            "s": out["stationShortCode"].cat.codes.to_numpy(),
+            "m": out["month"].cat.codes.to_numpy(),
+            "p": part,
+            "late": out["late"].to_numpy(),
+        }
+    )
+    baseline = cell.groupby(["s", "m", "p"])["late"].transform("mean").to_numpy()
+    out["ex"] = (out["late"].to_numpy() - baseline).astype("float32")
+    ops = {"<=": np.less_equal, ">": np.greater, ">=": np.greater_equal}
+    for cond in CONDITIONS:
+        out[f"f_{cond['key']}"] = ops[cond["op"]](a[cond["column"]].to_numpy(dtype="float32"), cond["value"])
+    return out
 
-    for key, spec in WEATHER_BANDS.items():
-        values = arrivals[spec["column"]]
-        band = np.searchsorted(spec["edges"], values.to_numpy(dtype=float), side="left")
-        arrivals[f"band_{key}"] = np.where(values.isna(), -1, band)
-    return arrivals
+
+def weather_arrivals(arrivals: pd.DataFrame, runs: pd.DataFrame, by=()) -> pd.DataFrame:
+    """The prepared arrivals of just these runs, tagged with each run's route-group columns `by`.
+    Same `runKey` merge as `station_level_stats`, so weather numbers cover exactly the arrivals the
+    delay numbers do."""
+    by = list(by)
+    route_of_run = runs[["runKey"] + by].drop_duplicates("runKey")
+    return arrivals.merge(route_of_run, on="runKey", how="inner")
 
 
 # A stop's weather for one train service needs at least this many readings to be shown.
@@ -675,9 +764,10 @@ def weather_stop_means(events: pd.DataFrame, runs: pd.DataFrame, by=("from", "to
     0. Stops with fewer than MIN_STOP_WEATHER temperature readings are left out.
     """
     by = list(by)
-    frame = events.dropna(subset=["Air temperature"]).copy()
-    frame["runKey"] = frame["departureDate"].astype(str) + "_" + frame["trainNumber"].astype(str)
-    frame = frame.drop(columns=[c for c in by if c in frame.columns])
+    frame = events.dropna(subset=["Air temperature"])[
+        ["dayNum", "trainNumber", "stationShortCode", "Air temperature", "Snow depth"]
+    ].copy()
+    frame["runKey"] = run_key(frame)
     route_of_run = runs[["runKey"] + by].drop_duplicates("runKey")
     frame = frame.merge(route_of_run, on="runKey", how="inner")
     frame["snow"] = frame["Snow depth"].clip(lower=0)
@@ -691,70 +781,61 @@ def weather_stop_means(events: pd.DataFrame, runs: pd.DataFrame, by=("from", "to
     }
 
 
-def weather_band_stats(arrivals: pd.DataFrame, group_cols: list[str]) -> dict:
-    """{group key tuple: {"t": [band stats x3], "s": [band stats x3]}}, where a band's stats
-    are `{"n", "avg", "latePct"}` (clamped mean delay, % late) or None below
-    MIN_WEATHER_ARRIVALS. A group key is a 1-tuple for a single group column."""
+def condition_stats(arrivals: pd.DataFrame, group_cols: list[str]) -> dict:
+    """{group key tuple: {condition key: {"n", "latePct", "excess"} or None}}.
+
+    `latePct` is the share of the group's arrivals in that condition that were more than
+    ON_TIME_THRESHOLD_MIN late; `excess` is how many more late trains per 100 than is usual for
+    the same station, month and part of the day (the mean of `ex`, in percentage points).
+    None below MIN_CONDITION_ARRIVALS. With no group columns the key is the empty tuple."""
     out: dict = {}
-    for key, spec in WEATHER_BANDS.items():
-        tagged = arrivals[arrivals[f"band_{key}"] >= 0]
-        grouped = tagged.groupby(group_cols + [f"band_{key}"], sort=False).agg(
-            n=("clampedDelay", "size"), avg=("clampedDelay", "mean"), late=("late", "mean")
-        )
-        for idx, row in grouped.iterrows():
-            *gkey, band = idx
-            gkey = tuple(gkey)
-            slot = out.setdefault(gkey, {k: [None] * len(v["labels"]) for k, v in WEATHER_BANDS.items()})
-            if row["n"] >= MIN_WEATHER_ARRIVALS:
-                slot[key][int(band)] = {
+    empty = {c["key"]: None for c in CONDITIONS}
+    for cond in CONDITIONS:
+        sub = arrivals[arrivals[f"f_{cond['key']}"]]
+        if group_cols:
+            grouped = sub.groupby(group_cols, sort=False).agg(
+                n=("late", "size"), late=("late", "mean"), ex=("ex", "mean")
+            )
+            rows = ((idx if isinstance(idx, tuple) else (idx,), r) for idx, r in grouped.iterrows())
+        else:
+            rows = [((), pd.Series({"n": len(sub), "late": sub["late"].mean(), "ex": sub["ex"].mean()}))]
+        for key, row in rows:
+            slot = out.setdefault(key, dict(empty))
+            if row["n"] >= MIN_CONDITION_ARRIVALS:
+                slot[cond["key"]] = {
                     "n": int(row["n"]),
-                    "avg": float(row["avg"]),
                     "latePct": float(row["late"] * 100),
+                    "excess": float(row["ex"] * 100),
                 }
     return out
 
 
 def station_weather_means(arrivals: pd.DataFrame) -> pd.DataFrame:
     """Per station: mean air temperature and mean snow depth (negative readings = 0)."""
-    snow = arrivals["Snow depth"].clip(lower=0)
-    frame = pd.DataFrame(
-        {"stationShortCode": arrivals["stationShortCode"], "temp": arrivals["Air temperature"], "snow": snow}
-    )
-    return frame.groupby("stationShortCode").agg(avgTemp=("temp", "mean"), avgSnow=("snow", "mean"))
+    return arrivals.groupby("stationShortCode").agg(avgTemp=("temp", "mean"), avgSnow=("snow", "mean"))
 
 
-def pooled_same_station(station_stats: dict) -> dict:
-    """The headline comparison, made *within* each station so geography (the north is colder
-    and runs different trains) can't produce it: for every station with at least
-    MIN_POOLED_ARRIVALS arrivals in both groups, take the % late in the harsh band and in the
-    benign band, then average over stations weighted by the smaller group.
+def monthly_delay(arrivals: pd.DataFrame) -> pd.DataFrame:
+    """Per month ("YYYY-MM"): arrivals, mean delay (early clamped to 0) and % on time."""
+    g = arrivals.assign(onTime=(arrivals["late"] == 0).astype("float32")).groupby("month")
+    out = g.agg(arrivals=("late", "size"), avgDelay=("clampedDelay", "mean"), onTimePct=("onTime", "mean"))
+    out["onTimePct"] *= 100
+    return out.sort_index()
 
-    `station_stats` is `weather_band_stats(arrivals, ["stationShortCode"])` (bands under
-    MIN_WEATHER_ARRIVALS are already None; the stricter pooled floor is applied here).
-    Returns {"temp": ..., "snow": ...}: for each, the weighted % late and mean delay in the
-    harsh band (frost / deep snow) and the benign one (mild / no snow), how many stations
-    qualified, and at how many the harsh band was the later one.
-    """
-    result: dict = {}
-    for name, key, harsh, benign in (("temp", "t", 0, 2), ("snow", "s", 2, 0)):
-        rows = []
-        for stats in station_stats.values():
-            h, b = stats[key][harsh], stats[key][benign]
-            if h and b and h["n"] >= MIN_POOLED_ARRIVALS and b["n"] >= MIN_POOLED_ARRIVALS:
-                rows.append((min(h["n"], b["n"]), h["latePct"], b["latePct"], h["avg"], b["avg"]))
-        if not rows:
-            result[name] = None
-            continue
-        w = np.array([r[0] for r in rows], dtype=float)
-        result[name] = {
-            "harshLatePct": float(np.average([r[1] for r in rows], weights=w)),
-            "benignLatePct": float(np.average([r[2] for r in rows], weights=w)),
-            "harshAvg": float(np.average([r[3] for r in rows], weights=w)),
-            "benignAvg": float(np.average([r[4] for r in rows], weights=w)),
-            "stations": len(rows),
-            "worseAt": int(sum(1 for r in rows if r[1] > r[2])),
-        }
-    return result
+
+def service_monthly(runs: pd.DataFrame, by=("from", "to", "trainType")) -> pd.DataFrame:
+    """Per train service and month: runs and mean run delay (the same per-run number the route
+    table averages)."""
+    by = list(by)
+    g = runs.groupby(by + ["month"])["avgDelay"]
+    return g.agg(runs="size", avgDelay="mean").reset_index()
+
+
+def subset_year(events: pd.DataFrame, runs: pd.DataFrame, year: int | None):
+    """(events, runs) of one year, or both unchanged for year=None (all years)."""
+    if year is None:
+        return events, runs
+    return events[events["year"] == year], runs[runs["year"] == year]
 
 
 # Weather stations the parquet uses that appear in neither EMS CSV. Coordinates from FMI's open
@@ -820,61 +901,79 @@ def _at(series: pd.Series, dates: pd.Series, pick) -> tuple[float | None, str | 
     return float(valid.loc[i]), dates.loc[i]
 
 
-def ems_weather_summary(events: pd.DataFrame) -> dict:
-    """Per weather station (the parquet's `closest_ems`): January statistics from the readings
-    taken when trains were nearby. NOT true monthly extremes -- there are no readings while no
-    train is around. One reading per station per EMS_SLOT: events share slots heavily (about
-    79% of rows are duplicates), and counting each would weight busy minutes.
+def _ems_tiles(g: pd.DataFrame, day_count: int) -> dict:
+    """Headline statistics of one weather station over one period (all years, or one year)."""
+    temp, snow = g["Air temperature"], g["snow"]
+    t_min, t_min_at = _at(temp, g["date"], pd.Series.idxmin)
+    t_max, t_max_at = _at(temp, g["date"], pd.Series.idxmax)
+    s_max, s_max_at = _at(snow, g["date"], pd.Series.idxmax)
+    gust, gust_at = _at(g["Gust speed"], g["date"], pd.Series.idxmax)
+    vis, vis_at = _at(g["Horizontal visibility"], g["date"], pd.Series.idxmin)
+    slots_per_day = 24 * 60 // int(EMS_SLOT.rstrip("min"))
+    return {
+        "readings": int(len(g)),
+        "slotShare": float(len(g) / (day_count * slots_per_day)) if day_count else None,
+        "days": int(g["date"].nunique()),
+        "temp": {
+            "avg": None if temp.dropna().empty else float(temp.mean()),
+            "min": t_min, "minAt": t_min_at, "max": t_max, "maxAt": t_max_at,
+        },
+        "snow": {
+            "max": s_max, "maxAt": s_max_at if s_max and s_max > 0 else None,
+            "daysWithSnow": int(g.loc[snow >= 1, "date"].nunique()),
+            "avg": None if snow.dropna().empty else float(snow.mean()),
+        },
+        "gust": {"max": gust, "maxAt": gust_at},
+        "visibility": {"min": vis, "minAt": vis_at},
+    }
 
-    Returns {"dates": [...], "stations": {name: {...}}}; `daily` rows align with `dates` and are
-    `[min, mean, max]` air temperature or None for a day with no readings. Days are departure
-    dates."""
-    frame = events.dropna(subset=["closest_ems", "scheduledTime"]).copy()
+
+def ems_weather_summary(events: pd.DataFrame) -> dict:
+    """Per weather station (the parquet's `closest_ems`): statistics from the readings taken when
+    trains were nearby. NOT true climate records -- there are no readings while no train is
+    around. One reading per station per EMS_SLOT: events share slots heavily (about 79% of rows
+    are duplicates), and counting each would weight busy minutes.
+
+    Returns {"months": [...], "stations": {name: {"scopes": {"all"|"<year>": tiles}, "monthly":
+    {...}}}}. `monthly` rows align with `months` ("YYYY-MM"): `temp` is [min, mean, max] air
+    temperature or None for a month with no readings; `snow` and `gust` are the deepest snow and
+    strongest gust; `n` the readings. Days are departure dates (a night train's readings after
+    midnight stay with the day it left)."""
+    cols = ["closest_ems", "scheduledTime", "departureDate", "month", "year",
+            "Air temperature", "Snow depth", "Gust speed", "Horizontal visibility"]
+    frame = events.dropna(subset=["closest_ems", "scheduledTime"])[cols].copy()
     frame["slot"] = frame["scheduledTime"].dt.floor(EMS_SLOT)
     frame = frame.drop_duplicates(["closest_ems", "slot"])
-    # Day = the run's departure date (as everywhere else on the site), so a night train's
-    # readings after midnight stay with the day it left, not the next month's first day.
-    frame["date"] = frame["departureDate"].astype(str).str.slice(0, 10)
-    dates = sorted(frame["date"].unique())
-    slots_per_day = 24 * 60 // int(EMS_SLOT.rstrip("min"))
+    frame["date"] = frame["departureDate"].astype(str)
+    frame["snow"] = frame["Snow depth"].clip(lower=0)
+    frame["month"] = frame["month"].astype(str)
+    months = sorted(events["month"].astype(str).unique())
+    dates_by_year = events.groupby("year")["departureDate"].nunique().to_dict()
+    day_counts = {"all": int(sum(dates_by_year.values())), **{str(y): int(n) for y, n in dates_by_year.items()}}
 
     stations: dict[str, dict] = {}
     for name, g in frame.groupby("closest_ems", sort=True):
-        temp, snow = g["Air temperature"], g["Snow depth"].clip(lower=0)
-        t_min, t_min_at = _at(temp, g["date"], pd.Series.idxmin)
-        t_max, t_max_at = _at(temp, g["date"], pd.Series.idxmax)
-        s_max, s_max_at = _at(snow, g["date"], pd.Series.idxmax)
-        gust, gust_at = _at(g["Gust speed"], g["date"], pd.Series.idxmax)
-        vis, vis_at = _at(g["Horizontal visibility"], g["date"], pd.Series.idxmin)
-        by_day = g.groupby("date")["Air temperature"].agg(["min", "mean", "max"])
-        snow_by_day = snow.groupby(g["date"]).max()
-        gust_by_day = g["Gust speed"].groupby(g["date"]).max()
+        scopes = {"all": _ems_tiles(g, day_counts["all"])}
+        for y, gy in g.groupby("year"):
+            scopes[str(y)] = _ems_tiles(gy, day_counts[str(y)])
+        t = g.groupby("month")["Air temperature"].agg(["min", "mean", "max"])
+        snow_m = g.groupby("month")["snow"].max()
+        gust_m = g.groupby("month")["Gust speed"].max()
+        n_m = g.groupby("month").size()
         stations[name] = {
-            "readings": int(len(g)),
-            "slotShare": float(len(g) / (len(dates) * slots_per_day)) if dates else None,
-            "days": int(g["date"].nunique()),
-            "temp": {
-                "avg": None if temp.dropna().empty else float(temp.mean()),
-                "min": t_min, "minAt": t_min_at, "max": t_max, "maxAt": t_max_at,
+            "scopes": scopes,
+            "monthly": {
+                "temp": [
+                    None if m not in t.index or pd.isna(t.at[m, "min"])
+                    else [float(t.at[m, "min"]), float(t.at[m, "mean"]), float(t.at[m, "max"])]
+                    for m in months
+                ],
+                "snow": [None if m not in snow_m.index or pd.isna(snow_m[m]) else float(snow_m[m]) for m in months],
+                "gust": [None if m not in gust_m.index or pd.isna(gust_m[m]) else float(gust_m[m]) for m in months],
+                "n": [int(n_m.get(m, 0)) for m in months],
             },
-            "snow": {
-                "max": s_max, "maxAt": s_max_at if s_max and s_max > 0 else None,
-                "daysWithSnow": int(g.loc[snow >= 1, "date"].nunique()),
-                "avg": None if snow.dropna().empty else float(snow.mean()),
-            },
-            "gust": {"max": gust, "maxAt": gust_at},
-            "visibility": {"min": vis, "minAt": vis_at},
-            "daily": [
-                None
-                if d not in by_day.index or pd.isna(by_day.at[d, "min"])
-                else [float(by_day.at[d, "min"]), float(by_day.at[d, "mean"]), float(by_day.at[d, "max"])]
-                for d in dates
-            ],
-            # Deepest snow and strongest gust per day (None = no reading that day).
-            "snowDaily": [None if d not in snow_by_day.index or pd.isna(snow_by_day[d]) else float(snow_by_day[d]) for d in dates],
-            "gustDaily": [None if d not in gust_by_day.index or pd.isna(gust_by_day[d]) else float(gust_by_day[d]) for d in dates],
         }
-    return {"dates": dates, "stations": stations}
+    return {"months": months, "dayCounts": day_counts, "stations": stations}
 
 
 def station_coverage_warning(events: pd.DataFrame, metadata_csv: Path) -> tuple[int, int, list[str]]:

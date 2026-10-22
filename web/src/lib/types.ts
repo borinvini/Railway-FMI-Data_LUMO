@@ -1,49 +1,43 @@
-/** One origin→destination route, aggregated over the month (see scripts/build_data.py).
- *  Not currently used by the home page (station map superseded it), kept for a possible
- *  future route-detail view. */
-export interface RouteFeature {
-  id: string
-  from_: string
-  to: string
-  runs: number
-  avgDelay: number
-  onTimePct: number
-  path: [number, number][]
-}
-
-/** One passenger station, with its own delay stats (see scripts/build_data.py,
- *  scripts/routes_lib.py `station_summary`). */
-export interface StationFeature {
-  code: string
-  name: string
-  lat: number
-  lon: number
+/** Per-station numbers for one period ("all" years or one year), see scripts/build_data.py
+ *  `station_stats`. Station files for a single year hold exactly this, keyed by station code. */
+export interface StationStats {
   avgDelay: number
   onTimePct: number
   runs: number
   appearances: number
   distinctRoutes: number
   cancelledPct: number
-  /** Weather at this station in January (null if no readings). Each band is the share of
-   *  arrivals more than 5 min late, or null when fewer than 30 arrivals fell in it. */
+  /** Weather at this station at train arrival times (null if no readings). */
   weather: StationWeather | null
+}
+
+/** One passenger station, with its own delay stats for the whole period (see
+ *  scripts/build_data.py, scripts/routes_lib.py `station_summary`). The page swaps in a single
+ *  year's `StationStats` when the year picker is used. */
+export interface StationFeature extends StationStats {
+  code: string
+  name: string
+  lat: number
+  lon: number
   /** The weather station shown for this station (null if none could be placed). */
   ems: StationEms | null
 }
 
 /** A weather station (FMI "EMS") shown on the map for a selected train station. `closest` is set
  *  only when a different, nearer station is the top-5 rank 1 but has no train readings in the
- *  data (see scripts/build_data.py `build_station_ems`). */
+ *  data (see scripts/build_data.py `build_station_ems`). `file` is its detail file in data/ems/. */
 export interface StationEms {
   name: string
   lat: number
   lon: number
   km: number
   closest: { name: string; km: number | null } | null
+  file: string
 }
 
-/** One weather station's January statistics, from the readings taken when trains were nearby. */
-export interface EmsWeather {
+/** One weather station's statistics for one period, from the readings taken when trains were
+ *  nearby. */
+export interface EmsScope {
   readings: number
   slotShare: number | null
   days: number
@@ -51,22 +45,33 @@ export interface EmsWeather {
   snow: { max: number | null; maxAt: string | null; daysWithSnow: number; avg: number | null }
   gust: { max: number | null; maxAt: string | null }
   visibility: { min: number | null; minAt: string | null }
-  /** [min, mean, max] air temperature per date, null on days with no readings. */
-  daily: ([number, number, number] | null)[]
-  /** Deepest snow (cm) and strongest gust (m/s) per date, null on days with no reading. */
-  snowDaily: (number | null)[]
-  gustDaily: (number | null)[]
+}
+
+/** data/ems/<file>.json: one weather station. `scopes` is keyed "all" or "2018"...; `monthly` rows
+ *  align with `months` ("YYYY-MM"). */
+export interface EmsStationFile {
+  months: string[]
+  scopes: Record<string, EmsScope>
+  monthly: {
+    /** [min, mean, max] air temperature in the month, null = no readings. */
+    temp: ([number, number, number] | null)[]
+    /** Deepest snow (cm) and strongest gust (m/s) in the month. */
+    snow: (number | null)[]
+    gust: (number | null)[]
+    /** Readings in the month. */
+    n: number[]
+  }
 }
 
 /** One weather pin on the map: a weather station, with the figures written inside it. In a route
  *  (`scope: 'route'`) the numbers are those of the route's own trains at the stops the station
- *  serves; for a single selected station (`scope: 'month'`) they are the station's January
- *  average. `own: false` = the route's trains had no figure, so the January average is shown. */
+ *  serves; for a single selected station (`scope: 'station'`) they are the station's average at
+ *  train times. `own: false` = the route's trains had no figure, so the station average is shown. */
 export interface WeatherPin {
   key: string
   /** Location, plus `km` to the nearest train station it serves on the route. */
   ems: StationEms
-  scope: 'route' | 'month'
+  scope: 'route' | 'station'
   stationNames: string[]
   stationCodes: string[]
   temp: number | null
@@ -76,24 +81,17 @@ export interface WeatherPin {
   isEnd: boolean
 }
 
-export interface EmsWeatherFile {
-  dates: string[]
-  stations: Record<string, EmsWeather>
-}
-
-export interface StationBand {
-  n: number
-  latePct: number
-}
+/** [arrivals, share more than 5 min late (%), extra late trains per 100 than is usual for the same
+ *  station, month and part of the day]. */
+export type ConditionCell = [number, number, number]
+/** Weather conditions (keys from `SummaryFile.conditions`) with enough arrivals to show. */
+export type Conditions = Record<string, ConditionCell | undefined>
 
 export interface StationWeather {
   /** Mean air temperature (°C) and mean snow depth (cm) at arrival times. */
   avgTemp: number | null
   avgSnow: number | null
-  frost: StationBand | null
-  mild: StationBand | null
-  snow: StationBand | null
-  noSnow: StationBand | null
+  conditions: Conditions | null
 }
 
 /** One physical segment between two directly-adjacent passenger stations
@@ -112,12 +110,12 @@ export interface ConnectionFeature {
 export type FinlandFeatureKind = 'land' | 'mask' | 'outline'
 export type FinlandGeoJSON = GeoJSON.FeatureCollection<GeoJSON.Geometry, { kind: FinlandFeatureKind }>
 
-/** One distinct full stop sequence a train ran (see scripts/build_data.py
- *  `build_route_patterns_payload`): every station it stops at, in order, plus how many runs
- *  of each train type followed it. */
+/** One distinct full stop sequence a train ran (see scripts/build_data.py `build_route_patterns`):
+ *  every station it stops at, in order, plus how many runs of each train type followed it, one
+ *  count per year (aligned with `SummaryFile.years`). */
 export interface RoutePattern {
   stops: string[]
-  runsByType: Record<string, number>
+  runsByType: Record<string, number[]>
 }
 
 /** What the route finder highlights on the map: one [lon, lat] path per distinct way trains
@@ -141,9 +139,8 @@ export interface RoutePath {
   sources: { id: string; trains: number }[]
 }
 
-/** Delay statistics for one train service (origin -> destination x train type), see
- *  scripts/build_data.py `build_route_stats_payload`. `stops` rows are
- *  [station code, trains, average minutes late, % on time]. */
+/** Delay statistics for one train service (origin -> destination x train type) in one period, see
+ *  scripts/build_data.py `build_route_stats_payload`. */
 export interface RouteStat {
   from: string
   to: string
@@ -161,16 +158,19 @@ export interface RouteStat {
    *  depth (cm), readings behind the two weather numbers]. The weather is that of this service's own
    *  trains at the stop (arrivals and departures); null / 0 when there were too few readings. */
   stops: [string, number, number | null, number | null, number | null, number | null, number][]
-  /** This service's arrivals by weather band: [arrivals, mean minutes late, % late] per band, null
-   *  where the band had too few arrivals. `t` = frost / around freezing / mild; `s` = no snow /
-   *  a little / deep. null when the service has no weather readings. */
-  w: { t: (WeatherCell | null)[]; s: (WeatherCell | null)[] } | null
+  /** This service's arrivals by weather condition; null when no condition had enough arrivals. */
+  w: Conditions | null
 }
-export type WeatherCell = [number, number, number]
 export type RouteStatsFile = Record<string, RouteStat>
 
-/** Month headline numbers for the landing card, see scripts/build_data.py `build_summary_payload`. */
-export interface SummaryFile {
+/** route_trends.json: for each train service, delay per month (aligned with `months`). */
+export interface RouteTrendsFile {
+  months: string[]
+  services: Record<string, { /** tenths of a minute; null = no trains */ avg: (number | null)[]; n: number[] }>
+}
+
+/** Landing-card numbers for one period ("all" or one year). */
+export interface Headline {
   firstDate: string | null
   lastDate: string | null
   trains: number
@@ -178,26 +178,24 @@ export interface SummaryFile {
   onTimePct: number | null
   typicalDelay: number | null
   worstDay: { date: string; typicalDelay: number | null } | null
-  weather: WeatherSummary | null
+  conditions: Conditions | null
 }
 
-/** One weather group's pooled same-station comparison (see routes_lib.pooled_same_station). */
-export interface WeatherCompare {
-  harshLatePct: number
-  benignLatePct: number
-  harshAvg: number
-  benignAvg: number
-  stations: number
-  worseAt: number
+export interface ConditionDef {
+  key: string
+  label: string
+  detail: string
 }
 
-export interface WeatherBands {
-  labels: string[]
-  edges: number[]
-}
-
-export interface WeatherSummary {
-  minArrivals: number
-  bands: { t: WeatherBands; s: WeatherBands }
-  compare: { temp: WeatherCompare | null; snow: WeatherCompare | null }
+/** summary.json, see scripts/build_data.py `main`. */
+export interface SummaryFile {
+  years: number[]
+  /** "YYYY-MM" for every month of data; `trend` rows align with it. */
+  months: string[]
+  conditions: ConditionDef[]
+  minConditionArrivals: number
+  scopes: Record<string, Headline>
+  /** Per condition: [years in which trains ran later than usual, years with enough data]. */
+  yearsAbove: Record<string, [number, number]>
+  trend: { avg: (number | null)[]; onTime: (number | null)[]; arrivals: (number | null)[] }
 }

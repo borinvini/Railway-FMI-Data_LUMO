@@ -2,8 +2,11 @@ import { BarController, BarElement, CategoryScale, Chart, LinearScale, Tooltip }
 import { useEffect, useMemo, useRef } from 'react'
 import { trainTypeName } from '../lib/trainTypes'
 import { summarizeRoute, viaLabel, type RouteSummary, type StationInfo, type StopPoint } from '../lib/routeStats'
-import type { RoutePath, RouteStatsFile, StationFeature, WeatherSummary } from '../lib/types'
-import WeatherBars from './WeatherBars'
+import { count, trainsText } from '../lib/period'
+import { combineServices, seasonal } from '../lib/trends'
+import type { ConditionDef, RoutePath, RouteStatsFile, RouteTrendsFile, StationFeature } from '../lib/types'
+import ConditionList, { CONDITION_CAVEAT, CONDITION_KEY } from './ConditionList'
+import { MonthlyLine, SeasonBars } from './DelayCharts'
 
 Chart.register(BarController, BarElement, CategoryScale, LinearScale, Tooltip)
 
@@ -27,8 +30,14 @@ interface RouteDetailsProps {
   /** null while route_stats.json is still loading. */
   stats: RouteStatsFile | null
   loadFailed: boolean
-  /** Band labels from summary.json; null until it has loaded (the weather section is then skipped). */
-  weatherBands: WeatherSummary['bands'] | null
+  /** What the period is called on screen: "2018–2025" or "2021". */
+  period: string
+  /** The picked year (null = all years); the month-by-month line picks it out. */
+  year: number | null
+  /** Weather condition names from summary.json; null until it has loaded (the section is then skipped). */
+  conditionDefs: ConditionDef[] | null
+  /** route_trends.json; null while it loads (the "over the years" section waits). */
+  trends: RouteTrendsFile | null
   onClose: () => void
 }
 
@@ -40,7 +49,7 @@ const stripAsema = (s: string) => s.replace(/ asema$/, '')
  * late, and a table of the train services that run the route. When several routes are
  * highlighted, tabs switch between them.
  */
-export default function RouteDetails({ routes, active, onActive, startName, endName, stations, stats, loadFailed, weatherBands, onClose }: RouteDetailsProps) {
+export default function RouteDetails({ routes, active, onActive, startName, endName, stations, stats, loadFailed, period, year, conditionDefs, trends, onClose }: RouteDetailsProps) {
   const info = useMemo(
     () => new Map<string, StationInfo>(stations.map((s) => [s.code, { name: stripAsema(s.name), runs: s.runs, lat: s.lat, lon: s.lon }])),
     [stations],
@@ -101,7 +110,7 @@ export default function RouteDetails({ routes, active, onActive, startName, endN
         </h2>
         <div className="mt-0.5 text-[15px] text-(--card-ink-2)">
           {routes.length > 1 ? `Route ${active + 1} of ${routes.length}: ` : ''}
-          {labels[active]}, {route.trains} trains in January
+          {labels[active]}, {trainsText(route.trains)}, {period}
         </div>
 
         {routes.length > 1 && (
@@ -119,7 +128,7 @@ export default function RouteDetails({ routes, active, onActive, startName, endN
                     : 'border-[rgba(0,47,108,0.3)] text-(--card-ink-2) hover:bg-[rgba(0,47,108,0.1)]'
                 }`}
               >
-                Route {i + 1}: {labels[i]}, {r.trains} trains
+                Route {i + 1}: {labels[i]}, {trainsText(r.trains)}
               </button>
             ))}
           </div>
@@ -134,7 +143,7 @@ export default function RouteDetails({ routes, active, onActive, startName, endN
         {summary && (
           <>
             <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <Tile label="Trains in January" value={String(summary.trains)} />
+              <Tile label={`Trains, ${period}`} value={count(summary.trains)} />
               <Tile label="Typically late at stops" value={summary.avgLate === null ? '–' : `${summary.avgLate.toFixed(1)} min`} />
               <Tile label="On time (up to 5 min late)" value={summary.onTimePct === null ? '–' : `${summary.onTimePct.toFixed(0)}%`} />
               <Tile label="Cancelled" value={summary.cancelledPct === null ? '–' : `${summary.cancelledPct.toFixed(1)}%`} />
@@ -171,7 +180,7 @@ export default function RouteDetails({ routes, active, onActive, startName, endN
                       <tr key={s.code} className="border-t border-(--card-line)">
                         <td className="py-1 pr-3">{s.name}</td>
                         <td className="py-1 pr-3 text-right">{s.avg === null ? '–' : `${s.avg.toFixed(1)} min`}</td>
-                        <td className="py-1 text-right">{s.trains || '–'}</td>
+                        <td className="py-1 text-right">{s.trains ? count(s.trains) : '–'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -185,7 +194,9 @@ export default function RouteDetails({ routes, active, onActive, startName, endN
             </p>
             <ArrivalSplit onTime={summary.onTimePct} minor={summary.minorPct} major={summary.majorPct} />
 
-            {weatherBands && <WeatherSection weather={summary.weather} bands={weatherBands} />}
+            {trends && <OverTime trends={trends} route={route} year={year} />}
+
+            {conditionDefs && <WeatherSection weather={summary.weather} defs={conditionDefs} period={period} />}
 
             <h3 className="font-board mt-6 mb-2 text-[22px] font-semibold">Train services on this route</h3>
             <div className="overflow-x-auto">
@@ -204,7 +215,7 @@ export default function RouteDetails({ routes, active, onActive, startName, endN
                     <tr key={s.id} className="border-t border-(--card-line)">
                       <td className="py-1.5 pr-3"><span className="font-board mr-1.5 text-lg font-semibold">{s.type}</span>{' '}{trainTypeName(s.type)}</td>
                       <td className="py-1.5 pr-3">{s.journey}</td>
-                      <td className="py-1.5 pr-3 text-right">{s.trains}</td>
+                      <td className="py-1.5 pr-3 text-right">{count(s.trains)}</td>
                       <td className="py-1.5 pr-3 text-right">{s.avg === null ? '–' : `${s.avg.toFixed(1)} min`}</td>
                       <td className="py-1.5 text-right">{s.onTime === null ? '–' : `${s.onTime.toFixed(0)}%`}</td>
                     </tr>
@@ -237,7 +248,7 @@ export default function RouteDetails({ routes, active, onActive, startName, endN
             </details>
 
             <p className="m-0 mt-4 text-sm text-(--card-ink-3)">
-              January 2020. Headline numbers and the table cover the whole journeys of the trains that
+              {period}. Headline numbers and the table cover the whole journeys of the trains that
               run this route, which may start before or continue past it; the stop-by-stop figures use
               each stop&apos;s own arrivals.
               {summary.missingServices > 0 && ` ${summary.missingServices} service(s) have no saved statistics.`}
@@ -249,38 +260,53 @@ export default function RouteDetails({ routes, active, onActive, startName, endN
   )
 }
 
-/** "Delay and weather": share of arrivals more than 5 min late by temperature and by snow depth,
- *  for this route's own trains. A group needs two usable bands to be a comparison at all. */
-function WeatherSection({ weather, bands }: { weather: RouteSummary['weather']; bands: WeatherSummary['bands'] }) {
-  const groups = [
-    { title: 'Late by temperature', labels: bands.t.labels, rows: weather.t },
-    { title: 'Late by snow on the ground', labels: bands.s.labels, rows: weather.s },
-  ].filter((g) => g.rows.filter((r) => r !== null).length >= 2)
-  const scaleMax = Math.max(10, ...groups.flatMap((g) => g.rows.map((r) => r?.latePct ?? 0)))
-
+/** "Delay and weather": for each kind of bad weather, how many more of this route's trains than
+ *  usual (same station, month and time of day) ran more than 5 min late. */
+function WeatherSection({ weather, defs, period }: { weather: RouteSummary['weather']; defs: ConditionDef[]; period: string }) {
+  const any = defs.some((d) => weather[d.key])
   return (
     <>
       <h3 className="font-board mt-6 mb-1 text-[22px] font-semibold">Delay and weather</h3>
-      {groups.length === 0 ? (
+      {!any ? (
         <p className="m-0 text-[15px] text-(--card-ink-2)">
-          There was no frost or snow worth comparing along this route in January.
+          No kind of bad weather happened often enough along this route, {period}, to compare.
         </p>
       ) : (
         <>
-          <p className="m-0 mb-3 text-[15px] text-(--card-ink-2)">
-            Share of this route&apos;s arrivals that were more than 5 minutes late, by the weather when the train arrived.
+          <p className="m-0 mb-2 text-[15px] text-(--card-ink-2)">
+            How many more of this route&apos;s trains than usual were more than 5 minutes late in each kind of weather.
           </p>
-          <div className="grid gap-x-8 gap-y-5 sm:grid-cols-2">
-            {groups.map((g) => (
-              <WeatherBars key={g.title} title={g.title} labels={g.labels} rows={g.rows} scaleMax={scaleMax} />
-            ))}
-          </div>
+          <ConditionList defs={defs} cells={weather} showCounts />
           <p className="m-0 mt-3 text-sm text-(--card-ink-3)">
-            Weather is from the nearest weather station. This is one January, and frost and snow come with other
-            things, such as winter nights, so it shows what happened, not exactly why.
+            {CONDITION_KEY} Weather is from the nearest weather station. {CONDITION_CAVEAT}
           </p>
         </>
       )}
+    </>
+  )
+}
+
+/** "Over the years": this route's delay for every month, and for each calendar month pooled over
+ *  the years. Built from the saved month-by-month figures of the services on the route. */
+function OverTime({ trends, route, year }: { trends: RouteTrendsFile; route: RoutePath; year: number | null }) {
+  const series = useMemo(() => combineServices(trends, route.sources), [trends, route])
+  const bySeason = useMemo(() => seasonal(trends.months, series, year), [trends, series, year])
+  if (series.avg.filter((v) => v !== null).length < 6) return null
+  return (
+    <>
+      <h3 className="font-board mt-6 mb-1 text-[22px] font-semibold">Over the years</h3>
+      <p className="m-0 mb-2 text-[15px] text-(--card-ink-2)">
+        Typical minutes late for this route&apos;s trains, for each month{year !== null ? `; ${year} is picked out` : ''}.
+      </p>
+      <MonthlyLine
+        months={trends.months}
+        avg={series.avg}
+        year={year}
+        height={200}
+        ariaLabel="Line chart of the typical minutes late on this route in each month"
+      />
+      <p className="m-0 mt-3 mb-1 text-[15px] text-(--card-ink-2)">{year === null ? 'And through the year, with all the years put together.' : `And through ${year}, month by month.`}</p>
+      <SeasonBars avg={bySeason.avg} height={170} ariaLabel="Bar chart of the typical minutes late on this route in each calendar month" />
     </>
   )
 }
@@ -367,7 +393,7 @@ function StopChart({ stops }: { stops: StopPoint[] }) {
               title: (items) => stops[items[0].dataIndex].name,
               label: (ctx) => {
                 const s = stops[ctx.dataIndex]
-                return `${(s.avg ?? 0).toFixed(1)} min late · ${s.trains} trains`
+                return `${(s.avg ?? 0).toFixed(1)} min late · ${count(s.trains)} trains`
               },
             },
           },

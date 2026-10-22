@@ -1,4 +1,6 @@
-import type { StationBand, StationFeature } from '../lib/types'
+import { count } from '../lib/period'
+import type { ConditionDef, StationFeature } from '../lib/types'
+import ConditionList, { CONDITION_KEY } from './ConditionList'
 
 // Round first: a mean of -0.4 is "0°C", not "−0°C".
 const formatTemp = (t: number) => {
@@ -6,21 +8,15 @@ const formatTemp = (t: number) => {
   return `${r < 0 ? '−' : ''}${Math.abs(r)}°C`
 }
 
-/** "Late in frost  25%": the share of this station's arrivals more than 5 min late in a band. */
-function LateRow({ label, band }: { label: string; band: StationBand }) {
-  return (
-    <div className="flex justify-between py-0.5">
-      <span>{label}</span>
-      <span className="font-board text-lg font-semibold text-(--card-ink)">{band.latePct.toFixed(0)}%</span>
-    </div>
-  )
-}
-
 interface StationPanelProps {
   station: StationFeature
   onClose: () => void
-  /** Open the January weather pop-up for this station's weather station. */
+  /** Open the weather pop-up for this station's weather station. */
   onShowWeather: () => void
+  /** What the period is called on screen: "2018–2025" or "2021". */
+  period: string
+  /** Weather condition names from summary.json; null until it has loaded. */
+  conditionDefs: ConditionDef[] | null
 }
 
 /**
@@ -28,7 +24,7 @@ interface StationPanelProps {
  * every train that stops there, any route/train type -- see scripts/routes_lib.py
  * `station_summary`, not scoped to a single route.
  */
-export default function StationPanel({ station, onClose, onShowWeather }: StationPanelProps) {
+export default function StationPanel({ station, onClose, onShowWeather, period, conditionDefs }: StationPanelProps) {
   const label = (s: string) => s.replace(/ asema$/, '')
   const weather = station.weather
 
@@ -43,7 +39,7 @@ export default function StationPanel({ station, onClose, onShowWeather }: Statio
         ✕
       </button>
       <p className="font-board mt-0 mb-0.5 pr-8 text-[26px] leading-tight font-semibold">{label(station.name)}</p>
-      <div className="mb-3.5 text-[15px] text-(--card-ink-2)">January 2020</div>
+      <div className="mb-3.5 text-[15px] text-(--card-ink-2)">{period}</div>
       <div className="font-board text-[56px] leading-none font-semibold">{station.avgDelay.toFixed(1)}</div>
       <div className="my-1 mb-3.5 text-[15px] text-(--card-ink-2)">minutes late, on average</div>
 
@@ -53,7 +49,7 @@ export default function StationPanel({ station, onClose, onShowWeather }: Statio
       </div>
       <div className="flex justify-between border-t border-(--card-line) py-2 text-[15px]">
         <span className="text-(--card-ink-2)">Trains stopping here</span>
-        <span>{station.runs}</span>
+        <span>{count(station.runs)}</span>
       </div>
       <div className="flex justify-between border-t border-(--card-line) py-2 text-[15px]">
         <span className="text-(--card-ink-2)">Routes served</span>
@@ -74,7 +70,7 @@ export default function StationPanel({ station, onClose, onShowWeather }: Statio
             onClick={onShowWeather}
             className="mt-2 flex min-h-11 w-full cursor-pointer items-center justify-center rounded-lg border border-[rgba(0,47,108,0.25)] text-[15px] text-(--card-ink) hover:bg-[rgba(0,47,108,0.1)]"
           >
-            See January weather
+            See the weather here
           </button>
         </div>
       )}
@@ -83,20 +79,15 @@ export default function StationPanel({ station, onClose, onShowWeather }: Statio
         <div className="mt-1 border-t border-(--card-line) pt-2.5 text-[15px] text-(--card-ink-2)">
           {weather.avgTemp !== null && (
             <p className="m-0 mb-1.5">
-              January weather here: {formatTemp(weather.avgTemp)} on average
+              Weather here when trains arrived: {formatTemp(weather.avgTemp)} on average
               {weather.avgSnow !== null && (weather.avgSnow >= 0.5 ? `, ${weather.avgSnow.toFixed(0)} cm of snow` : ', no snow')}.
             </p>
           )}
-          {weather.frost && weather.mild && (
+          {conditionDefs && weather.conditions && (
             <>
-              <LateRow label="Late in frost" band={weather.frost} />
-              <LateRow label="Late in mild weather" band={weather.mild} />
-            </>
-          )}
-          {weather.snow && weather.noSnow && (
-            <>
-              <LateRow label="Late with 10+ cm of snow" band={weather.snow} />
-              <LateRow label="Late with no snow" band={weather.noSnow} />
+              <p className="m-0 mt-2 mb-0.5 font-medium text-(--card-ink)">Late trains in bad weather</p>
+              <ConditionList defs={conditionDefs} cells={weather.conditions} />
+              <p className="m-0 mt-1 text-sm text-(--card-ink-3)">{CONDITION_KEY}</p>
             </>
           )}
         </div>

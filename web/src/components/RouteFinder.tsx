@@ -1,3 +1,4 @@
+import { trainsText } from '../lib/period'
 import type { RouteResult } from '../lib/routeFinder'
 import type { StationFeature } from '../lib/types'
 import { trainTypeName } from '../lib/trainTypes'
@@ -18,6 +19,8 @@ interface RouteFinderProps {
   onLive: () => void
   /** A Live run is going: the button reads Stop and ends it. */
   liveRunning: boolean
+  /** What the period is called on screen: "2018–2025" or "2021". */
+  period: string
 }
 
 const ghostButton =
@@ -28,7 +31,7 @@ const ghostButton =
  * route between them (Map.tsx draws it from the `routeHighlight` App derives from `result`).
  * Direct trains only -- a train that stops at the start station and later at the end station.
  */
-export default function RouteFinder({ stations, start, end, result, onStart, onEnd, onSwap, onRandom, onClear, onLive, liveRunning }: RouteFinderProps) {
+export default function RouteFinder({ stations, start, end, result, onStart, onEnd, onSwap, onRandom, onClear, onLive, liveRunning, period }: RouteFinderProps) {
   const both = start !== null && end !== null
 
   return (
@@ -98,7 +101,7 @@ export default function RouteFinder({ stations, start, end, result, onStart, onE
 
       <div className="mt-3 border-t border-(--card-line) pt-2.5 text-[15px] text-(--card-ink-2)">
         {!both && 'Pick two stations to see which trains connect them.'}
-        {both && !result && 'No direct train between these stations.'}
+        {both && !result && `No direct train between these stations, ${period}.`}
         {both && result && (
           <>
             <ul className="m-0 list-none p-0">
@@ -108,12 +111,12 @@ export default function RouteFinder({ stations, start, end, result, onStart, onE
                     <span className="font-board mr-1.5 text-lg font-semibold text-(--card-ink)">{t.type}</span>{' '}
                     {trainTypeName(t.type)}
                   </span>
-                  <span className="shrink-0">{t.trains} trains</span>
+                  <span className="shrink-0">{trainsText(t.trains)}</span>
                 </li>
               ))}
             </ul>
             <div className="mt-1.5 text-sm text-(--card-ink-3)">
-              Direct trains in January, from {stationLabel(start!.name)} to {stationLabel(end!.name)}
+              Direct trains, {period}, from {stationLabel(start!.name)} to {stationLabel(end!.name)}
             </div>
           </>
         )}

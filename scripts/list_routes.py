@@ -81,6 +81,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sort", choices=list(SORT_KEYS), default="runs", help="Sort key (default: runs)")
     parser.add_argument("--no-csv", action="store_true", help="Don't write data/derived/routes_index.csv")
     parser.add_argument("--parquet", help="Path to a specific parquet file instead of auto-discovery")
+    parser.add_argument("--years", type=int, nargs="*", help="Only these years, e.g. --years 2020 2021 (default: every year found)")
     parser.add_argument(
         "--stations", action="store_true",
         help="Also print each printed route's full passenger-station sequence",
@@ -185,7 +186,7 @@ def main() -> int:
         except Exception:
             pass
 
-    events = routes_lib.load_events(paths)
+    events = routes_lib.load_events(paths, years=args.years)
     runs = routes_lib.derive_routes(events)
     station_meta = routes_lib.load_station_metadata(METADATA_CSV)
     routes = routes_lib.aggregate(
@@ -205,8 +206,8 @@ def main() -> int:
             parts.append(f"unexpected: {', '.join(unexpected)}")
         missing_note = " (" + "; ".join(parts) + ")"
 
-    date_min = events["departureDate"].min()
-    date_max = events["departureDate"].max()
+    date_min = runs["departureDate"].min()
+    date_max = runs["departureDate"].max()
 
     print(
         f"{len(events):,} rows -> {len(runs):,} runs -> "

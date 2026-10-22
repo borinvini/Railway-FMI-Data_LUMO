@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 
 /**
- * The left column over the map: title + month numbers, route finder, station search. A flex
+ * The left column over the map: title + year picker and headline numbers, route finder, station search. A flex
  * column (cards stack by their own height, no hard-coded tops) kept inside the 36% of the width
  * the map reserves for it (LEFT_PANEL_FRACTION in lib/mapStyle.ts). The column itself ignores the
  * pointer so the gaps between cards still pan the map. On a short window it scrolls rather than

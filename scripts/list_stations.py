@@ -73,6 +73,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sort", choices=list(SORT_KEYS), default="appearances", help="Sort key (default: appearances)")
     parser.add_argument("--no-csv", action="store_true", help="Don't write data/derived/station_index.csv")
     parser.add_argument("--parquet", help="Path to a specific parquet file instead of auto-discovery")
+    parser.add_argument("--years", type=int, nargs="*", help="Only these years, e.g. --years 2020 2021 (default: every year found)")
     parser.add_argument(
         "--full", action="store_true",
         help="Print every delay statistic in the table, not just the trimmed default set",
@@ -152,7 +153,7 @@ def main() -> int:
         except Exception:
             pass
 
-    events = routes_lib.load_events(paths)
+    events = routes_lib.load_events(paths, years=args.years)
     runs = routes_lib.derive_routes(events)
     station_meta = routes_lib.load_station_metadata(METADATA_CSV)
     stations = routes_lib.station_summary(events, runs, station_meta)
@@ -169,8 +170,8 @@ def main() -> int:
             parts.append(f"unexpected: {', '.join(unexpected)}")
         missing_note = " (" + "; ".join(parts) + ")"
 
-    date_min = events["departureDate"].min()
-    date_max = events["departureDate"].max()
+    date_min = runs["departureDate"].min()
+    date_max = runs["departureDate"].max()
     n_passenger = int((stations["passengerTraffic"] == True).sum())  # noqa: E712
 
     print(

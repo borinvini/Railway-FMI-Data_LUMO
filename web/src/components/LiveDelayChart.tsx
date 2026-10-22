@@ -17,7 +17,7 @@ const LEVELS = [2, 5]
 const levelColor = (minutes: number) => rgbCss(routeBadgeStep(minutes).fill)
 
 /**
- * The delay chart for a Live run: the monthly average delay at each station, as a line that grows with
+ * The delay chart for a Live run: the average delay at each station, as a line that grows with
  * the train. Colour keeps meaning delay: each segment of the line takes the colour of its level (blue
  * under 2 min, amber 2-5, crimson over 5, the same as the delay badges on the map used to be), and the
  * area under it is banded in the same three colours, so the thresholds are visible at a glance. Axes
@@ -111,7 +111,7 @@ export default function LiveDelayChart({ profile }: { profile: DelayProfile }) {
 
   return (
     <div className="pointer-events-auto rounded-[10px] border border-(--line) bg-(--surface) px-[18px] pt-3 pb-2.5 backdrop-blur-[8px]">
-      <div className="text-sm text-(--muted)">Delay at each station, monthly average</div>
+      <div className="text-sm text-(--muted)">Delay at each station, average</div>
       <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-sm text-(--muted)">
         {ROUTE_BADGE_STEPS.map((step) => (
           <span key={step.label} className="flex items-center gap-1.5">

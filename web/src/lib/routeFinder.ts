@@ -8,12 +8,18 @@ export interface RouteResult {
   totalTrains: number
 }
 
+/** Trains in the picked period: one year (index into `SummaryFile.years`), or all years when null. */
+export const trainsIn = (perYear: number[], yearIndex: number | null): number =>
+  yearIndex === null ? perYear.reduce((a, b) => a + b, 0) : (perYear[yearIndex] ?? 0)
+
 /**
  * Direct trains that stop at `start` and then, later in the same run, at `end`. Trains run in
  * both directions, so each direction appears as its own pattern in the data -- no special
- * handling needed for reversed pairs. Returns null when there is no such train.
+ * handling needed for reversed pairs. `yearIndex` picks the year to count trains for (null = all
+ * years); a way that no train used in that year is left out. Returns null when there is no such
+ * train.
  */
-export function findRoutes(patterns: RoutePattern[], start: string, end: string): RouteResult | null {
+export function findRoutes(patterns: RoutePattern[], start: string, end: string, yearIndex: number | null = null): RouteResult | null {
   const paths = new Map<string, RoutePath>()
   const typeRuns = new Map<string, number>()
 
@@ -22,6 +28,11 @@ export function findRoutes(patterns: RoutePattern[], start: string, end: string)
     if (i < 0) continue
     const j = p.stops.indexOf(end, i + 1)
     if (j < 0) continue
+
+    const counts = Object.entries(p.runsByType)
+      .map(([type, perYear]) => [type, trainsIn(perYear, yearIndex)] as const)
+      .filter(([, n]) => n > 0)
+    if (counts.length === 0) continue
 
     const stops = p.stops.slice(i, j + 1)
     const key = stops.join('>')
@@ -34,7 +45,7 @@ export function findRoutes(patterns: RoutePattern[], start: string, end: string)
     // A service (origin -> destination x train type) is what the saved statistics describe;
     // its id matches the keys of route_stats.json.
     const serviceBase = `${p.stops[0]}-${p.stops[p.stops.length - 1]}`
-    for (const [type, n] of Object.entries(p.runsByType)) {
+    for (const [type, n] of counts) {
       path.trains += n
       path.byType[type] = (path.byType[type] ?? 0) + n
       const id = `${serviceBase}-${type}`
@@ -89,8 +100,8 @@ export function distanceKm(a: { lat: number; lon: number }, b: { lat: number; lo
  * (weighted by how many runs followed it, so common services come up more often), then two of
  * its passenger stops (start before end) at least MIN_DISTANCE_KM apart as the crow flies, so
  * the route is worth looking at -- "3 stops apart" was tried first but is only a few km in the
- * dense Helsinki area. The pair always has a direct train, so the finder never answers "no
- * direct train" for it. Tries a few times to avoid repeating `avoid` (the pair currently
+ * dense Helsinki area. The pair always has a direct train (in the picked year, when `yearIndex` is
+ * set), so the finder never answers "no direct train" for it. Tries a few times to avoid repeating `avoid` (the pair currently
  * shown). `stations` maps every passenger station code to its coordinates. Null only if no
  * train in the data covers that distance.
  */
@@ -98,13 +109,14 @@ export function pickRandomRoute(
   patterns: RoutePattern[],
   stations: Map<string, { lat: number; lon: number }>,
   avoid?: { start: string; end: string } | null,
+  yearIndex: number | null = null,
 ): { start: string; end: string } | null {
   const candidates = patterns
     .map((p) => ({
       stops: p.stops.filter((c) => stations.has(c)),
-      runs: Object.values(p.runsByType).reduce((a, b) => a + b, 0),
+      runs: Object.values(p.runsByType).reduce((a, perYear) => a + trainsIn(perYear, yearIndex), 0),
     }))
-    .filter((c) => c.stops.length >= 2)
+    .filter((c) => c.stops.length >= 2 && c.runs > 0)
   const totalRuns = candidates.reduce((sum, c) => sum + c.runs, 0)
   if (totalRuns === 0) return null
 

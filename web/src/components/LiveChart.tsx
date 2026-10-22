@@ -18,7 +18,7 @@ const FONT = "'Barlow Condensed', Barlow, system-ui, sans-serif"
  * The weather chart for a Live run: temperature and snow depth along the route, drawn as the train
  * runs. Axes are fixed from the whole route so nothing rescales while it fills in; the data is
  * pushed straight into Chart.js from the animation loop's distance (lib/liveStore.ts), never through
- * React state. January averages at each stop, not readings.
+ * React state. Averages at each stop, not readings.
  */
 export default function LiveChart({ profile }: { profile: LiveProfile }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
