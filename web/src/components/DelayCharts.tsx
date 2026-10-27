@@ -6,9 +6,20 @@ import { MONTH_NAMES, MONTH_SHORT, monthTitle } from '../lib/trends'
 
 Chart.register(BarController, BarElement, CategoryScale, LinearScale, LineController, LineElement, PointElement, Tooltip)
 
-// Chart ink on the light card (same palette as RouteDetails): flag blue, the highest bar in crimson.
+// Chart ink on the light card (same palette as RouteDetails): flag blue, the latest months in red.
 const BLUE = '#002f6c'
-const CRIMSON = '#c1213d'
+const LIGHT_RED: [number, number, number] = [0xf2, 0xaa, 0xb2]
+const DARK_RED: [number, number, number] = [0xc1, 0x21, 0x3d]
+/** Minutes late at the light end and the crimson end of the red scale. */
+const RED_LOW = 5.0
+const RED_HIGH = 13.8
+
+/** Red for a delay in minutes: light red at RED_LOW, crimson at RED_HIGH, linear between, clamped. */
+const redFor = (minutes: number) => {
+  const t = Math.min(1, Math.max(0, (minutes - RED_LOW) / (RED_HIGH - RED_LOW)))
+  const [r, g, b] = LIGHT_RED.map((c, k) => Math.round(c + (DARK_RED[k] - c) * t))
+  return `rgb(${r}, ${g}, ${b})`
+}
 const INK = '#243f5e'
 const SOFT = '#3f5873'
 const FADED = 'rgba(0, 47, 108, 0.28)'
@@ -104,22 +115,31 @@ interface SeasonBarsProps {
   height?: number
 }
 
-/** Twelve bars, one per calendar month: when in the year trains run later. The latest month is
- *  picked out in crimson, like the latest-running stop in the route chart. */
+/** Twelve bars, one per calendar month: when in the year trains run later. The four latest months
+ *  are picked out in a red scale (5.0 min = light red, 13.8 min = crimson); below 5.0 min, and all other months, stay blue. */
 export function SeasonBars({ avg, ariaLabel, height = 200 }: SeasonBarsProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    const top = Math.max(...avg.map((v) => (v === null ? -Infinity : v)))
+    // The four latest months get a red from the scale (light red at RED_LOW minutes up to crimson at
+    // RED_HIGH, clamped), so the shade tells the size of the delay; the other months stay blue.
+    const topMonths = new Set(
+      avg
+        .flatMap((v, i) => (v === null ? [] : [{ v, i }]))
+        .sort((a, b) => b.v - a.v)
+        .slice(0, 4)
+        .map((m) => m.i),
+    )
+    const colors = avg.map((v, i) => (v !== null && v >= RED_LOW && topMonths.has(i) ? redFor(v) : BLUE))
     const chart = new Chart(canvas, {
       type: 'bar',
       data: {
         labels: MONTH_SHORT,
         datasets: [{
           data: avg,
-          backgroundColor: avg.map((v) => (v !== null && v === top ? CRIMSON : BLUE)),
+          backgroundColor: colors,
           borderRadius: { topLeft: 2, topRight: 2 },
           maxBarThickness: 36,
           categoryPercentage: 0.85,
