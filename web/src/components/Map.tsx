@@ -962,15 +962,17 @@ export default function MapView({ stations, connections, finland, selected, onSe
       const height = map.getContainer().clientHeight
       const left = (map.getPadding().left ?? 0) + 70
       const taken = labels.map((l) => map.project([l.lon, l.lat]))
+      const featured = (code: string) => (PRESENT.featuredCodes as readonly string[]).includes(code)
+      const rankOf = (code: string) => (featured(code) ? -1 : rank.get(code) ?? Infinity)
       const options = stationsRef.current
-        .filter((s) => (rank.get(s.code) ?? Infinity) < PRESENT.poolSize && !labels.some((l) => l.code === s.code))
+        .filter((s) => (featured(s.code) || rankOf(s.code) < PRESENT.poolSize) && !labels.some((l) => l.code === s.code))
         .flatMap((s) => {
           const p = map.project([s.lon, s.lat])
           const onScreen = p.x > left && p.x < width - 260 && p.y > 130 && p.y < height - 110
           const apart = taken.every((q) => Math.hypot(q.x - p.x, q.y - p.y) >= PRESENT.minSeparationPx)
           return onScreen && apart ? [s] : []
         })
-        .sort((a, b) => (lastShown.get(a.code) ?? -Infinity) - (lastShown.get(b.code) ?? -Infinity) || (rank.get(a.code) ?? 0) - (rank.get(b.code) ?? 0))
+        .sort((a, b) => (lastShown.get(a.code) ?? -Infinity) - (lastShown.get(b.code) ?? -Infinity) || rankOf(a.code) - rankOf(b.code))
       const pick = options[0]
       if (!pick) return
       lastShown.set(pick.code, now)

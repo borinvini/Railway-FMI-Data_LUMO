@@ -32,6 +32,8 @@ export const PRESENT = {
   spawnEverySeconds: 1.5,
   minSeparationPx: 180,
   poolSize: 24,
+  /** Always in the name pool and tried first: Rovaniemi, Vaasa, Kemi, Kemijärvi, Kolari. */
+  featuredCodes: ['ROI', 'VS', 'KEM', 'KJÄ', 'KLI'],
   // The map's own limits (see mapStyle / Map.tsx constructor); the flight stays inside them.
   minZoom: 3.5,
   maxZoom: 9,
