@@ -371,7 +371,7 @@ picker only switches files. **Start-up files (about 335 KB, budget 600 KB):**
 - `route_trends.json` (~247 KB) — per service (>= 20 trains in total) delay per month in tenths of a
   minute plus trains per month; loaded when the route pop-up opens.
 - `ems/<slug>.json` (128 files, <= 7 KB) — one weather station: tiles per scope and a monthly series.
-- `predictor.json` (~170 KB) — the AI model's chance per month/day/time for the 7 modeled stations,
+- `predictor.json` (~196 KB) — the AI model's chance per month/day/time for the 7 modeled stations,
   from `scripts/build_predictor.py` (not `build_data.py`), see *Delay predictor*.
 
 Keep the start-up payload to a few hundred KB; everything else is lazy.
@@ -511,7 +511,17 @@ button in the station panel. It opens `components/DelayPredictor.tsx`: the visit
 a day of the week and a time (30-minute steps), and sees the chance that a train there is
 **disrupted = late by 1 min or more, or cancelled** (the paper's label, not the site's 5-minute
 rule; the copy says so), plus how far that is from the station's usual share, and a bar strip of
-the chance through the day. Weather is not an input.
+the chance through the day.
+
+- **Weather inputs** (WEATHER row: temperature + snow sliders; none at Pasila, whose S1 model has no
+  weather; snow hidden in months without snow). Untouched = each train's real weather (sliders rest,
+  greyed, at the month's median). Moving one sets both. The build puts the picked values on up to
+  300 real trains of that month (instant temperature set, its 72 h min/max/mean and the dew point
+  shifted by the same amount; snow depth and its 72 h figures set) and stores
+  `weather[month].d[temp][snow]` = logit(mean chance picked) − logit(mean chance real), in
+  hundredths; the browser adds it to the cell's logit (`lib/predictor.ts` `weatherShift`, `shifted`).
+  Ranges = the month's 2nd-98th percentile at the station, steps 2 °C / 5 cm. Effects are modest
+  (January about −11 to +17 points, summer heat up to +14), in line with the paper.
 
 - **What a number is.** For a month/day/slot where at least 10 real trains stopped (2018-2024), the
   model's mean answer for *those* trains, with the weather they had (~98% of events sit in such

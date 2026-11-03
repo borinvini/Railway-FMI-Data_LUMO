@@ -73,6 +73,14 @@ MIN_WEATHER_POOL = 30
 MIN_CELL_EVENTS = 10
 # Width of the minute bins a time slot is averaged over (must divide --step-minutes).
 SUB_MINUTES = 5
+# Visitor's weather: slider steps, real events per month the picked weather is put on, and which
+# columns follow the temperature (shifted) or take the snow depth (set).
+TEMP_STEP = 2
+SNOW_STEP = 5
+WEATHER_SET_SAMPLES = 300
+TEMP_FOLLOW = ("Air temperature (72h max)", "Air temperature (72h min)", "Air temperature (72h mean)",
+               "Dew-point temperature")
+SNOW_SET = ("Snow depth", "Snow depth (72h max)", "Snow depth (72h min)", "Snow depth (72h mean)")
 
 
 def find_dir(parent: Path, prefix: str) -> Path:
@@ -297,6 +305,12 @@ def build_station(code: str, folder: str, prefix: str, label: str, paper_auc: fl
     if abs(looked_up.mean() - usual) > MAX_CALIBRATION_GAP:
         sys.exit(f"{code}: the grid's average is off by more than {MAX_CALIBRATION_GAP} points")
 
+    weather = None
+    if "Air temperature" in features and "Snow depth" in features:
+        def predict(df: pd.DataFrame) -> np.ndarray:
+            return correct(model.predict_proba(model_input(scaling.apply(df)))[:, pos_col], spw)
+        weather = weather_grid(train, month_col, predict)
+
     return {
         "scenario": label,
         "uses": SCENARIO_WORDS[label],
@@ -306,7 +320,63 @@ def build_station(code: str, folder: str, prefix: str, label: str, paper_auc: fl
         "slotShare": [round(100 * float(v), 2) for v in share],
         "p": permille.tolist(),
         "few": few.tolist(),
+        **({"weather": weather} if weather else {}),
     }
+
+
+def logit(p: np.ndarray | float) -> np.ndarray:
+    p = np.clip(p, 1e-6, 1 - 1e-6)
+    return np.log(p / (1 - p))
+
+
+def weather_grid(train: pd.DataFrame, month_col: np.ndarray, predict) -> list[dict]:
+    """The visitor's temperature and snow, as a shift of the answer for each calendar month.
+
+    Real trains of the month get the picked values: the instant temperature is set and its 72 h
+    min/max/mean and the dew point move by the same amount (so the history fits the new reading);
+    the snow depth and its 72 h figures are set. Everything else stays as it was. The shift is
+    logit(mean chance with the picked weather) - logit(mean chance with the real weather), in
+    hundredths; the site adds it to the cell's logit.
+    """
+    temp_cols = [c for c in TEMP_FOLLOW if c in train.columns]
+    snow_cols = [c for c in SNOW_SET if c in train.columns]
+    months = []
+    for month in range(1, 13):
+        rows = train.loc[month_col == month]
+        t = rows["Air temperature"].astype(float)
+        s = rows["Snow depth"].astype(float).clip(lower=0)
+        lo = TEMP_STEP * math.floor(t.quantile(0.02) / TEMP_STEP)
+        hi = TEMP_STEP * math.ceil(t.quantile(0.98) / TEMP_STEP)
+        temps = list(range(int(lo), int(hi) + 1, TEMP_STEP))
+        top = SNOW_STEP * math.ceil(s.quantile(0.98) / SNOW_STEP)
+        snows = list(range(0, int(top) + 1, SNOW_STEP))
+
+        sample = rows.sample(n=min(WEATHER_SET_SAMPLES, len(rows)), random_state=42).reset_index(drop=True)
+        n = len(sample)
+        base = float(predict(sample).mean())
+        blocks = []
+        for temp in temps:
+            for snow in snows:
+                b = sample.copy()
+                shift = temp - b["Air temperature"].astype(float)
+                b["Air temperature"] = float(temp)
+                for c in temp_cols:
+                    b[c] = b[c].astype(float) + shift
+                for c in snow_cols:
+                    b[c] = float(snow)
+                blocks.append(b)
+        p = predict(pd.concat(blocks, ignore_index=True)).reshape(len(temps), len(snows), n).mean(axis=2)
+        d = np.rint((logit(p) - logit(base)) * 100).astype(int)
+
+        nearest = lambda vals, v: min(vals, key=lambda x: abs(x - v))  # noqa: E731
+        temp0, snow0 = nearest(temps, float(t.median())), nearest(snows, float(s.median()))
+        pts = 100 * (p - base)
+        print(f"    {month:>2}: {temps[0]:>4}..{temps[-1]:>3} C, snow 0..{snows[-1]:>3} cm; "
+              f"at typical {temp0} C/{snow0} cm {pts[temps.index(temp0), snows.index(snow0)]:+.1f} pts; "
+              f"effect {pts.min():+.1f} to {pts.max():+.1f} pts")
+        months.append({"temps": [temps[0], TEMP_STEP, len(temps)], "snows": [0, SNOW_STEP, len(snows)],
+                       "temp0": temp0, "snow0": snow0, "d": d.tolist()})
+    return months
 
 
 def main() -> None:
@@ -314,7 +384,9 @@ def main() -> None:
     ap.add_argument("--ai-results", type=Path, default=DEFAULT_AI_RESULTS)
     ap.add_argument("--step-minutes", type=int, default=30)
     ap.add_argument("--out", type=Path, default=OUT_FILE)
+    ap.add_argument("--stations", help="comma-separated codes, for quick checks (write to another --out)")
     a = ap.parse_args()
+    only = set(a.stations.split(",")) if a.stations else None
     if (24 * 60) % a.step_minutes:
         sys.exit("--step-minutes must divide a day")
 
@@ -323,7 +395,7 @@ def main() -> None:
         "period": "2018-2024",
         "stepMinutes": a.step_minutes,
         "stations": {code: build_station(code, f, pre, lab, auc_, a.ai_results, a.step_minutes)
-                     for code, f, pre, lab, auc_ in BEST},
+                     for code, f, pre, lab, auc_ in BEST if only is None or code in only},
     }
     a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_text(json.dumps(out, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n",

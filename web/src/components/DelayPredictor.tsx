@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { DAY_SHORT, changeWords, chanceAt, fewAt, nowPick, slotLabel } from '../lib/predictor'
+import { DAY_SHORT, changeWords, chanceAt, fewAt, nowPick, rangeValues, shifted, slotLabel, weatherShift, type PickedWeather } from '../lib/predictor'
 import { MONTH_SHORT } from '../lib/trends'
-import type { PredictorFile } from '../lib/types'
+import type { PredictorFile, PredictorWeatherMonth } from '../lib/types'
 
 interface DelayPredictorProps {
   code: string
@@ -36,7 +36,11 @@ const chip = (on: boolean) =>
 export default function DelayPredictor({ code, stationName, file, loadFailed, onClose }: DelayPredictorProps) {
   const step = file?.stepMinutes ?? 30
   const [pick, setPick] = useState(() => nowPick(step))
+  // null = the real weather the trains had; a value once the visitor moves a weather slider.
+  const [weather, setWeather] = useState<PickedWeather | null>(null)
   const st = file?.stations[code] ?? null
+  const wm = st?.weather?.[pick.month - 1]
+  const shift = weatherShift(wm, weather)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -50,9 +54,11 @@ export default function DelayPredictor({ code, stationName, file, loadFailed, on
 
   const slots = (24 * 60) / step
   const slot = Math.min(pick.slot, slots - 1)
-  const chance = st ? chanceAt(st, pick.month, pick.day, slot) : null
+  const realChance = st ? chanceAt(st, pick.month, pick.day, slot) : null
+  const chance = realChance === null ? null : shifted(realChance, shift)
+  const effect = chance !== null && realChance !== null ? chance - realChance : 0
   const fewTrains = st ? fewAt(st, pick.month, pick.day, slot) : false
-  const dayCurve = st ? st.p[pick.month - 1][pick.day].map((v) => v / 10) : []
+  const dayCurve = st ? st.p[pick.month - 1][pick.day].map((v) => shifted(v / 10, shift)) : []
   const dayFew = st ? st.few[pick.month - 1][pick.day].map((v) => v === 1) : []
 
   return (
@@ -76,10 +82,6 @@ export default function DelayPredictor({ code, stationName, file, loadFailed, on
         <h2 id="predictor-title" className="font-board m-0 pr-10 text-[32px] leading-tight font-semibold">
           Ask the AI model: {stationName}
         </h2>
-        <p className="m-0 mt-0.5 text-[15px] text-(--card-ink-2)">
-          Pick a month, a day and a time. A model trained on this station's trains says how likely a train is to run
-          late.
-        </p>
 
         {!st && (
           <p className="mt-6 mb-2 text-[15px] text-(--card-ink-2)">
@@ -89,7 +91,7 @@ export default function DelayPredictor({ code, stationName, file, loadFailed, on
 
         {st && file && chance !== null && (
           <>
-            <div className="mt-4 flex flex-col gap-3.5">
+            <div className="mt-3 flex flex-col gap-2.5">
               <Field label="Month">
                 {/* One joined bar: a single choice out of twelve, read as one control. */}
                 <div
@@ -104,7 +106,7 @@ export default function DelayPredictor({ code, stationName, file, loadFailed, on
                         key={m}
                         type="button"
                         aria-pressed={on}
-                        onClick={() => setPick((p) => ({ ...p, month: i + 1 }))}
+                        onClick={() => { setPick((p) => ({ ...p, month: i + 1 })); setWeather(null) }}
                         className={`min-h-11 cursor-pointer border-[rgba(0,47,108,0.18)] text-[15px] not-last:border-r max-sm:nth-[6]:border-r-0 max-sm:nth-[-n+6]:border-b ${
                           on ? 'bg-(--card-ink) font-medium text-white' : 'text-(--card-ink-2) hover:bg-[rgba(0,47,108,0.1)]'
                         }`}
@@ -147,21 +149,34 @@ export default function DelayPredictor({ code, stationName, file, loadFailed, on
                   />
                 </div>
               </Field>
+              <Field label="Weather">
+                {wm ? (
+                  <WeatherControls month={wm} monthName={MONTH_LONG[pick.month - 1]} value={weather} onChange={setWeather} />
+                ) : (
+                  <p className="m-0 flex min-h-11 items-center text-[15px] text-(--card-ink-2)">This station's model does not use the weather.</p>
+                )}
+              </Field>
             </div>
 
             <div className={`mt-3 border-t border-(--card-line) pt-3 ${fewTrains ? 'opacity-60' : ''}`}>
               <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-                <span className="font-board text-[64px] leading-none font-semibold tabular-nums">{Math.round(chance)}%</span>
-                <span className="max-w-[360px] text-[17px] leading-snug">
-                  chance that a train here runs late (by 1 min or more) or is cancelled
-                </span>
+                <span data-chance className="font-board text-[56px] leading-none font-semibold tabular-nums">{Math.round(chance)}%</span>
+                <span className="text-[17px] leading-snug">chance that a train here runs late (by 1 min or more) or is cancelled</span>
               </div>
-              <p className="m-0 mt-1.5 text-[17px] font-medium">{changeWords(chance, st.usualPct)}</p>
+              <p className="m-0 mt-1.5 text-[17px]">
+                <span className="font-medium">{changeWords(chance, st.usualPct)}</span>
+                {weather && (
+                  <span className="text-(--card-ink-2)">
+                    {' · '}
+                    {Math.abs(effect) < 1
+                      ? 'your weather hardly changes it'
+                      : `your weather ${effect > 0 ? 'adds' : 'takes off'} ${Math.round(Math.abs(effect))} ${Math.round(Math.abs(effect)) === 1 ? 'point' : 'points'}`}
+                  </span>
+                )}
+              </p>
             </div>
             {fewTrains && (
-              <p className="m-0 mt-1 text-[15px] text-(--card-ink-2)">
-                Few or no trains stopped here at this time, so this is a rough guess.
-              </p>
+              <p className="m-0 mt-0.5 text-[15px] text-(--card-ink-2)">Rough guess: few or no trains stopped here then.</p>
             )}
 
             <DayStrip
@@ -175,10 +190,11 @@ export default function DelayPredictor({ code, stationName, file, loadFailed, on
 
             <p className="m-0 mt-3 text-sm text-(--card-ink-3)">
               {fewTrains
-                ? `Few trains stopped at ${stationName} on ${DAY_LONG[pick.day]}s in ${MONTH_LONG[pick.month - 1]} around ${slotLabel(slot, step)}, so this is the AI model's answer for a typical train then, in that month's usual weather.`
-                : `The AI model's average answer for the trains that stopped at ${stationName} on ${DAY_LONG[pick.day]}s in ${MONTH_LONG[pick.month - 1]} around ${slotLabel(slot, step)} in ${file.period.replace('-', '–')}, with the weather they had.`}{' '}
-              It knows {KNOWS[st.scenario] ?? st.uses}. Shown one train that ran late and one that did not, it picks the late one
-              about {Math.round(st.testAuc * 10)} times in 10. A guess from past patterns, not a timetable.
+                ? `The AI model's answer for a typical train at ${stationName} then`
+                : `The AI model's average answer for the ${file.period.replace('-', '–')} trains at ${stationName} on ${DAY_LONG[pick.day]}s in ${MONTH_LONG[pick.month - 1]} around ${slotLabel(slot, step)}`}
+              {weather ? ', given your weather (the last 3 days of temperature move with it).' : st.weather ? ', with the weather they had.' : '.'} It
+              knows {KNOWS[st.scenario] ?? st.uses}, and tells a late train from an on-time one about {Math.round(st.testAuc * 10)}{' '}
+              times in 10. A guess from past patterns, not a timetable.
             </p>
           </>
         )}
@@ -187,11 +203,85 @@ export default function DelayPredictor({ code, stationName, file, loadFailed, on
   )
 }
 
+// A real minus sign: "−12°C".
+const degrees = (t: number) => `${t < 0 ? '−' : ''}${Math.abs(t)}°C`
+
+interface WeatherControlsProps {
+  month: PredictorWeatherMonth
+  monthName: string
+  value: PickedWeather | null
+  onChange: (w: PickedWeather | null) => void
+}
+
+/** Temperature and snow depth sliders over the month's real range. Untouched they sit at the
+ *  month's typical values and the answer uses the real weather; moving one sets both. */
+function WeatherControls({ month, monthName, value, onChange }: WeatherControlsProps) {
+  const temps = rangeValues(month.temps)
+  const snows = rangeValues(month.snows)
+  const cur = value ?? { temp: month.temp0, snow: month.snow0 }
+  const ti = Math.max(0, temps.indexOf(cur.temp))
+  const si = Math.max(0, snows.indexOf(cur.snow))
+  const figure = `font-board w-[76px] shrink-0 text-[26px] leading-none font-semibold tabular-nums ${value ? '' : 'text-(--card-ink-3)'}`
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-2 sm:flex-row sm:gap-5">
+        <label className="flex min-w-0 flex-1 items-center gap-3">
+          <span className={figure}>{degrees(cur.temp)}</span>
+          <input
+            type="range"
+            min={0}
+            max={temps.length - 1}
+            value={ti}
+            aria-label="Air temperature"
+            aria-valuetext={degrees(cur.temp)}
+            onChange={(e) => onChange({ ...cur, temp: temps[Number(e.target.value)] })}
+            className="h-11 min-w-0 flex-1 cursor-pointer accent-(--card-ink)"
+          />
+        </label>
+        {snows.length > 1 ? (
+          <label className="flex min-w-0 flex-1 items-center gap-3">
+            <span className={figure}>{cur.snow} cm</span>
+            <input
+              type="range"
+              min={0}
+              max={snows.length - 1}
+              value={si}
+              aria-label="Snow depth"
+              aria-valuetext={`${cur.snow} cm of snow`}
+              onChange={(e) => onChange({ ...cur, snow: snows[Number(e.target.value)] })}
+              className="h-11 min-w-0 flex-1 cursor-pointer accent-(--card-ink)"
+            />
+          </label>
+        ) : (
+          <span className="flex min-h-11 flex-1 items-center text-[15px] text-(--card-ink-2)">No snow on the ground in {monthName}</span>
+        )}
+      </div>
+      <div className="-mt-1 flex items-center justify-between gap-3 text-sm text-(--card-ink-3)">
+        <span>
+          {value ? 'Your weather' : 'Now: each train\'s real weather. Move a slider to pick your own'} ({degrees(temps[0])} to{' '}
+          {degrees(temps[temps.length - 1])}
+          {snows.length > 1 ? `, 0 to ${snows[snows.length - 1]} cm of snow` : ''}, as seen in {monthName}).
+        </span>
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange(null)}
+            className="-my-2.5 min-h-11 shrink-0 cursor-pointer px-1 text-[15px] font-medium text-(--card-ink) underline underline-offset-2"
+          >
+            Use the real weather
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 /** One labelled input row: the label sits left of the control on wide screens, above it on phones. */
 function Field({ label, children }: { label: string; children: ReactNode }) {
+  // Label lined up with the first line of the control (a 44 px row), even when the control wraps.
   return (
-    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
-      <span className="w-[62px] shrink-0 text-[13px] font-medium tracking-[0.08em] text-(--card-ink-3) uppercase">{label}</span>
+    <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:gap-3">
+      <span className="w-[62px] shrink-0 text-[13px] font-medium tracking-[0.08em] text-(--card-ink-3) uppercase sm:leading-11">{label}</span>
       <div className="min-w-0 flex-1">{children}</div>
     </div>
   )
@@ -211,12 +301,12 @@ interface DayStripProps {
 function DayStrip({ values, few, usual, selected, step, onPick }: DayStripProps) {
   const ticks = [0, 6, 12, 18, 24]
   return (
-    <div className="mt-4">
-      <p className="m-0 mb-1.5 text-[15px] text-(--card-ink-2)">
+    <div className="mt-3">
+      <p className="m-0 mb-1 text-[15px] text-(--card-ink-2)">
         Through the day (tap a bar to pick its time). Faint bars: few or no trains. Dashed line: the usual{' '}
         {Math.round(usual)}%.
       </p>
-      <div className="relative h-[96px]">
+      <div className="relative h-[72px]">
         <div className="absolute inset-0 flex items-end gap-px">
           {values.map((v, i) => (
             <button

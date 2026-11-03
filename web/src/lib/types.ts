@@ -217,6 +217,22 @@ export interface PredictorStation {
   p: number[][][]
   /** 1 where fewer than 10 real trains ran in that month/day/slot (the answer is a rough guess). */
   few: number[][][]
+  /** The visitor's temperature and snow, one table per calendar month; absent when the model has
+   *  no weather (Pasila). */
+  weather?: PredictorWeatherMonth[]
+}
+
+/** [first value, step, count] of a slider. */
+export type SliderRange = [number, number, number]
+
+export interface PredictorWeatherMonth {
+  temps: SliderRange
+  snows: SliderRange
+  /** The month's typical temperature and snow depth: where the sliders start. */
+  temp0: number
+  snow0: number
+  /** Shift of the answer's logit, in hundredths, [temperature index][snow index]. */
+  d: number[][]
 }
 
 export interface PredictorFile {
