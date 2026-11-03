@@ -25,6 +25,12 @@ export const DEFAULT_VIEW = {
  *  relative spot (centre at ~68% of the width) on any window size. */
 export const LEFT_PANEL_FRACTION = 0.36
 
+/** Phones (see CLAUDE.md "Phone layout") do not use DEFAULT_VIEW: a tall, narrow screen cannot show
+ *  Finland in that framing. Their home view fits these bounds (mainland Finland and Åland) between
+ *  the top bar and the dock, then tilts by PHONE_PITCH, facing north. */
+export const FINLAND_BOUNDS: [[number, number], [number, number]] = [[20.6, 59.75], [31.6, 70.1]]
+export const PHONE_PITCH = 40
+
 /** "Nordic night" palette: navy shades derived from the Finnish flag blue (Pantone 294 C,
  *  #002F6C) with an icy accent. See CLAUDE.md "Map style". */
 const P = {

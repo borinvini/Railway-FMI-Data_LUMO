@@ -14,6 +14,15 @@ import LiveChart from './components/LiveChart'
 import LiveDelayChart from './components/LiveDelayChart'
 import WeatherStationDetails from './components/WeatherStationDetails'
 import DelayPredictor from './components/DelayPredictor'
+import PhoneTopBar from './components/phone/PhoneTopBar'
+import Dock, { type PhoneSheetName } from './components/phone/Dock'
+import Sheet from './components/phone/Sheet'
+import RoutePeek from './components/phone/RoutePeek'
+import LegendPill from './components/phone/LegendPill'
+import LiveCharts from './components/phone/LiveCharts'
+import type { MapInsets } from './components/Map'
+import { useIsPhone } from './lib/useIsPhone'
+import { useElementHeight } from './lib/useElementHeight'
 import { PREDICTOR_CODES } from './lib/predictor'
 import { findRoutes, pickRandomRoute, toHighlight } from './lib/routeFinder'
 import { PRESENT } from './lib/presentation'
@@ -79,6 +88,11 @@ export default function App() {
   type ShowPhase = 'aerial' | 'route' | 'journey' | 'arrived'
   const [showPhase, setShowPhase] = useState<ShowPhase>('aerial')
   const [presentCycle, setPresentCycle] = useState(0)
+
+  // Phone layout (see CLAUDE.md "Phone layout"): the map fills the screen and the panels are sheets
+  // over its lower part, one at a time, opened from the dock.
+  const phone = useIsPhone()
+  const [sheet, setSheet] = useState<PhoneSheetName | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -397,6 +411,7 @@ export default function App() {
     setTrendsOpen(false)
     setPredictorOpen(false)
     setYear(null)
+    setSheet(null)
     setResetSignal((n) => n + 1)
   }, [])
 
@@ -411,10 +426,13 @@ export default function App() {
   presentingRef.current = presenting
   const startPresentingRef = useRef(startPresenting)
   startPresentingRef.current = startPresenting
+  // A phone is someone's own device, not the kiosk: reading a panel for a while must not reset it.
+  const phoneRef = useRef(phone)
+  phoneRef.current = phone
   useEffect(() => {
     let timer = window.setTimeout(fire, IDLE_RESET_MS)
     function fire() {
-      if (liveRef.current || presentingRef.current) { poke(); return }
+      if (liveRef.current || presentingRef.current || phoneRef.current) { poke(); return }
       resetAllRef.current()
       if (armedRef.current) startPresentingRef.current()
     }
@@ -432,8 +450,102 @@ export default function App() {
 
   const showReset = !presenting && (drifted || selected !== null || routeHighlight !== null)
 
+  // Phone: a station picked on the map (or in the search) opens the Station sheet with its figures.
+  useEffect(() => { if (phone && selectedCode) setSheet('station') }, [phone, selectedCode])
+  // Phone: once a pair of stations has a route, the Route sheet steps aside (it drops to the peek
+  // bar) so the route and its badges are visible. With no direct train it stays open to say so.
+  const routeKey = routeStart && routeEnd ? `${routeStart.code}-${routeEnd.code}` : null
+  const hasRoute = routeResult !== null
+  useEffect(() => {
+    if (phone && routeKey && hasRoute) setSheet((s) => (s === 'route' ? null : s))
+  }, [phone, routeKey, hasRoute])
+  // Phone: the journey takes the whole screen.
+  useEffect(() => { if (live) setSheet(null) }, [live])
+
+  // Phone: how much of the screen the bars and the open sheet cover, so the map keeps its framing in
+  // the part that is still free.
+  const topRef = useRef<HTMLElement>(null)
+  const dockRef = useRef<HTMLElement>(null)
+  const routeSheetRef = useRef<HTMLDivElement>(null)
+  const stationSheetRef = useRef<HTMLDivElement>(null)
+  const overviewSheetRef = useRef<HTMLDivElement>(null)
+  const peekRef = useRef<HTMLDivElement>(null)
+  const liveTopRef = useRef<HTMLDivElement>(null)
+  const liveBottomRef = useRef<HTMLDivElement>(null)
+  const showPeek = phone && !live && sheet === null && routeHighlight !== null && routeStart !== null && routeEnd !== null
+  const topH = useElementHeight(topRef, phone && !live)
+  const dockH = useElementHeight(dockRef, phone && !live)
+  const sheetH =
+    useElementHeight(routeSheetRef, phone && sheet === 'route') +
+    useElementHeight(stationSheetRef, phone && sheet === 'station') +
+    useElementHeight(overviewSheetRef, phone && sheet === 'overview')
+  const peekH = useElementHeight(peekRef, showPeek)
+  const liveTopH = useElementHeight(liveTopRef, phone && live !== null)
+  const liveBottomH = useElementHeight(liveBottomRef, phone && live !== null)
+  const mapInsets = useMemo<MapInsets>(
+    () =>
+      !phone
+        ? { top: 0, bottom: 0 }
+        : live
+          ? { top: liveTopH + 16, bottom: liveBottomH + 16 }
+          : { top: topH, bottom: dockH + (sheet ? sheetH : showPeek ? peekH : 0) },
+    [phone, live, liveTopH, liveBottomH, topH, dockH, sheet, sheetH, showPeek, peekH],
+  )
+
+  const routeFinder = (
+    <RouteFinder
+      stations={stations}
+      start={routeStart}
+      end={routeEnd}
+      result={routeResult}
+      onStart={setRouteStart}
+      onEnd={setRouteEnd}
+      onSwap={() => { setRouteStart(routeEnd); setRouteEnd(routeStart) }}
+      onRandom={() => {
+        const pair = pickRandomPair()
+        if (!pair) return
+        setRouteStart(pair.start)
+        setRouteEnd(pair.end)
+      }}
+      onClear={() => { setRouteStart(null); setRouteEnd(null) }}
+      onLive={() => (live ? setLive(null) : startLive())}
+      liveRunning={live !== null}
+      period={period}
+    />
+  )
+  const stationPanel = selected && (
+    <StationPanel
+      station={selected}
+      onClose={() => setSelected(null)}
+      onShowWeather={() => selectedPin && setWeatherPin(selectedPin)}
+      period={period}
+      conditionDefs={summary?.conditions ?? null}
+      onAskModel={PREDICTOR_CODES.has(selected.code) ? () => setPredictorOpen(true) : undefined}
+    />
+  )
+  const liveStop = live && liveAt >= 0 ? live.route.stops[live.passengerIndexes[liveAt]] : null
+  const liveStopPin = liveStop ? routePins.find((p) => p.stationCodes.includes(liveStop.code)) : undefined
+  const liveCard = live && (
+    <LiveCard
+      stopName={liveStop?.name ?? null}
+      delay={liveStop ? routeValues.get(liveStop.code)?.avg ?? null : null}
+      temp={liveStopPin?.temp ?? null}
+      snow={liveStopPin?.snow ?? null}
+      reached={liveAt + 1}
+      total={live.passengerIndexes.length}
+      onStop={() => setLive(null)}
+    />
+  )
+  const stripAsema = (s: string) => s.replace(/ asema$/, '')
+
   return (
-    <div className="relative h-screen w-screen overflow-hidden">
+    <div
+      className="relative h-screen w-screen overflow-hidden"
+      data-phone={phone || undefined}
+      // Phone: the dynamic viewport height, so the dock is not hidden behind the browser's own bars;
+      // the two lengths place MapLibre's compass and attribution clear of the bars (index.css).
+      style={phone ? ({ height: '100dvh', '--phone-top': `${live ? liveTopH + 16 : topH}px`, '--phone-bottom': `${live ? liveBottomH + 16 : dockH + (showPeek ? peekH : 0)}px` } as React.CSSProperties) : undefined}
+    >
       <MapView
         stations={stations}
         connections={connections}
@@ -457,56 +569,78 @@ export default function App() {
         presenting={presenting && showPhase === 'aerial'}
         presentCycle={presentCycle}
         onPresentLoop={onPresentLoop}
+        phone={phone}
+        insets={mapInsets}
       />
 
+      {phone ? (
+        <>
+          {!live && (
+            <>
+              <PhoneTopBar ref={topRef} period={period} onPeriod={() => setSheet('overview')} showReset={showReset} onReset={resetAll} />
+              <Sheet ref={routeSheetRef} open={sheet === 'route'} label="Find a route" onClose={() => setSheet(null)} bottom={dockH} top={topH} maxHeight="68dvh">
+                {routeFinder}
+              </Sheet>
+              <Sheet ref={stationSheetRef} open={sheet === 'station'} label="Station" onClose={() => setSheet(null)} bottom={dockH} top={topH} maxHeight="56dvh">
+                <StationSelect stations={stations} selected={selected} onSelect={setSelected} />
+                {stationPanel && <div className="relative mt-3 border-t border-(--card-line) pt-3">{stationPanel}</div>}
+              </Sheet>
+              <Sheet ref={overviewSheetRef} open={sheet === 'overview'} label="Overview" onClose={() => setSheet(null)} bottom={dockH} top={topH} maxHeight="76dvh">
+                <PeriodSummary summary={summary} year={year} onYear={setYear} onOpenTrends={() => setTrendsOpen(true)} />
+                <Footer embedded />
+              </Sheet>
+              {showPeek && routeStart && routeEnd && routeResult && (
+                <RoutePeek
+                  ref={peekRef}
+                  startName={stripAsema(routeStart.name)}
+                  endName={stripAsema(routeEnd.name)}
+                  paths={routeResult.paths.length}
+                  bottom={dockH}
+                  onExpand={() => setSheet('route')}
+                  onDetails={() => setDetailIndex(0)}
+                  onPlay={() => startLive()}
+                />
+              )}
+              {sheet === null && (
+                <LegendPill
+                  routeMode={routeHighlight !== null}
+                  weatherShown={showWeather && routePins.length > 0}
+                  bottom={dockH + (showPeek ? peekH : 0) + 10}
+                  weatherToggle={routeHighlight !== null && routePins.length > 0 ? { shown: showWeather, onToggle: () => setShowWeather((v) => !v) } : null}
+                />
+              )}
+              <Dock ref={dockRef} open={sheet} onOpen={setSheet} routeActive={routeHighlight !== null} stationActive={selected !== null} />
+            </>
+          )}
+          {live && (
+            <>
+              <div ref={liveTopRef} className="pointer-events-none absolute inset-x-2 z-30" style={{ top: 'calc(8px + env(safe-area-inset-top))' }}>
+                {liveCard}
+              </div>
+              <LiveCharts ref={liveBottomRef} delay={liveDelayProfile} weather={liveProfile} />
+            </>
+          )}
+        </>
+      ) : (
+      <>
       {/* While the journey plays the three left cards are hidden; the run's own card (with Stop) and
           the weather chart take the left edge instead. */}
       {!live && (
       <SideColumn>
         <PeriodSummary summary={summary} year={year} onYear={setYear} onOpenTrends={() => setTrendsOpen(true)} />
-        <RouteFinder
-          stations={stations}
-          start={routeStart}
-          end={routeEnd}
-          result={routeResult}
-          onStart={setRouteStart}
-          onEnd={setRouteEnd}
-          onSwap={() => { setRouteStart(routeEnd); setRouteEnd(routeStart) }}
-          onRandom={() => {
-            const pair = pickRandomPair()
-            if (!pair) return
-            setRouteStart(pair.start)
-            setRouteEnd(pair.end)
-          }}
-          onClear={() => { setRouteStart(null); setRouteEnd(null) }}
-          onLive={() => (live ? setLive(null) : startLive())}
-          liveRunning={live !== null}
-          period={period}
-        />
+        {routeFinder}
         <StationSelect stations={stations} selected={selected} onSelect={setSelected} />
       </SideColumn>
       )}
 
-      {live && (() => {
-        const stop = liveAt >= 0 ? live.route.stops[live.passengerIndexes[liveAt]] : null
-        const pin = stop ? routePins.find((p) => p.stationCodes.includes(stop.code)) : undefined
-        return (
-          // The now-playing card with the weather chart under it, in the empty area west of Finland.
-          <div className="pointer-events-none absolute top-5 left-5 z-30 flex w-[min(380px,calc(100vw-40px))] flex-col gap-3">
-            <LiveCard
-              stopName={stop?.name ?? null}
-              delay={stop ? routeValues.get(stop.code)?.avg ?? null : null}
-              temp={pin?.temp ?? null}
-              snow={pin?.snow ?? null}
-              reached={liveAt + 1}
-              total={live.passengerIndexes.length}
-              onStop={() => setLive(null)}
-            />
-            {liveDelayProfile && <LiveDelayChart profile={liveDelayProfile} />}
-            {liveProfile && <LiveChart profile={liveProfile} />}
-          </div>
-        )
-      })()}
+      {live && (
+        // The now-playing card with the weather chart under it, in the empty area west of Finland.
+        <div className="pointer-events-none absolute top-5 left-5 z-30 flex w-[min(380px,calc(100vw-40px))] flex-col gap-3">
+          {liveCard}
+          {liveDelayProfile && <LiveDelayChart profile={liveDelayProfile} />}
+          {liveProfile && <LiveChart profile={liveProfile} />}
+        </div>
+      )}
 
       {/* Legend and Reset view share one row, so the button never overlaps the legend. The row
           starts to the right of the left column (not under it): the column can be tall, and the
@@ -558,6 +692,13 @@ export default function App() {
         </button>
       </div>
 
+      {stationPanel}
+
+      {/* Credits and partner logos: always on screen, also while presenting or playing a journey. */}
+      <Footer />
+      </>
+      )}
+
       {routeResult && routeStart && routeEnd && detailIndex !== null && (
         <RouteDetails
           routes={routeResult.paths}
@@ -573,17 +714,6 @@ export default function App() {
           conditionDefs={summary?.conditions ?? null}
           trends={routeTrends}
           onClose={() => setDetailIndex(null)}
-        />
-      )}
-
-      {selected && (
-        <StationPanel
-          station={selected}
-          onClose={() => setSelected(null)}
-          onShowWeather={() => selectedPin && setWeatherPin(selectedPin)}
-          period={period}
-          conditionDefs={summary?.conditions ?? null}
-          onAskModel={PREDICTOR_CODES.has(selected.code) ? () => setPredictorOpen(true) : undefined}
         />
       )}
 
@@ -613,9 +743,6 @@ export default function App() {
           onClose={() => setWeatherPin(null)}
         />
       )}
-
-      {/* Credits and partner logos: always on screen, also while presenting or playing a journey. */}
-      <Footer />
 
       {trendsOpen && summary &&<DelayTrends summary={summary} year={year} onYear={setYear} onClose={() => setTrendsOpen(false)} />}
 

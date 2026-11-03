@@ -590,6 +590,61 @@ buttons stay on screen; only Reset view is hidden while it plays.
 - Dev only: `window.__map` is the MapLibre map (to read the camera when checking). A 1280x720 window
   keeps the browser tool responsive; the 3D map renders in software.
 
+## Phone layout (viewport width < 768 px)
+
+On a phone the desktop column covered the whole map, so phones get their own layout: **the map
+first, and panels only when asked for**.
+- **Switching:** `lib/useIsPhone.ts` (`(max-width: 767px)`) picks it; App renders either the phone
+  shell or the desktop tree. Tablets and wider keep the desktop layout, and the desktop output is
+  unchanged.
+- **Where it lives:** `components/phone/`.
+
+What is on screen:
+- **Top bar** (`PhoneTopBar`): the flag, "Trains in Finland", a period chip that opens Overview, and
+  a Reset view icon (rendered only when needed).
+- **Dock** (`Dock`): Route / Station / Overview. Tapping the open tab closes its sheet, and a dot
+  marks a tab that has a route or station on the map.
+- **Sheets** (`Sheet`): one at a time, light `.card` surface. They close with the chevron or by
+  dragging the handle down. They grow to full height while a text field has focus (the keyboard).
+  Max height: Route 68dvh, Station 56dvh, Overview 76dvh. `.sheet-body .card` (index.css) strips
+  the reused desktop cards of their frame.
+  - **Route sheet:** RouteFinder. When a pair gets a route, the sheet closes and **RoutePeek**
+    shows "A → B" with Details and Play the journey. With no direct train the sheet stays open.
+  - **Station sheet:** StationSelect plus StationPanel. A tap on a pin opens it.
+  - **Overview sheet:** PeriodSummary, then `<Footer embedded />`, a dark plate with the logos,
+    the credit and the data note. Phones have no footer strip.
+- **Legend:** a pill (`LegendPill`) that opens the full Legend; "Hide weather stations" lives in it.
+- **Pop-ups** (RouteDetails, DelayTrends, WeatherStationDetails, DelayPredictor): full screen via
+  `max-md:` classes, with the close button fixed top-right. RouteDetails swaps its route tabs for a
+  native `<select>`.
+- **Play the journey:** LiveCard at the top and one tabbed chart box (`LiveCharts`, Delay /
+  Weather) at the bottom. The bars and sheets are hidden.
+- **Hidden on phones:** Presentation mode, and the 90 s idle reset (a phone is the visitor's own
+  device).
+
+How the map follows the layout:
+- **Space taken:** App measures the bars, the open sheet or peek, and the journey boxes
+  (`useElementHeight`), and passes them to Map as `insets`. Map uses them as top and bottom camera
+  padding (no left padding on phones), gliding into new padding.
+- **Camera moves:** a padding change would stop a flight, so the glide waits for `moveend`. Camera
+  moves that come with a sheet change (route fit, station fly-to, Reset) wait 120 ms
+  (`afterPhoneLayout`) and use the final padding.
+- **Phone home view** (`homeView` in Map.tsx): `DEFAULT_VIEW` stays desktop-only and locked.
+  Phones fit `FINLAND_BOUNDS` (lib/mapStyle.ts) between the bars, plus 56 px for the legend pill,
+  at `PHONE_PITCH` 40° and bearing 0. The fit uses plain Mercator maths from the map size, so it
+  doesn't depend on mid-animation padding. `PHONE_ZOOM_BOOST` (+0.28) and `PHONE_CENTER_SHIFT`
+  (0.58) correct for the tilt. Reset and route-clear use it, and so does the drift check.
+- **Taps:** a finger tap has no hover, so the map's "click on empty map clears the selection"
+  handler also asks deck.gl `pickObject` what is under the point. `pickingRadius` is 16 on phones
+  (10 on desktop).
+- **MapLibre controls:** the compass sits under the top bar, and the attribution sits above the
+  dock and starts folded (`--phone-top` / `--phone-bottom` set by App).
+- **Viewport:** `index.html` sets `viewport-fit=cover` and `interactive-widget=resizes-content`.
+  The bars pad by `env(safe-area-inset-*)`, and the root uses `100dvh`.
+
+Checked with Playwright touch emulation on iPhone 13 (390×664), iPhone SE (320×568), Pixel 7
+(412×839) and landscape (750×342). Landscape works, but a sheet there covers most of the map.
+
 ## Footer and partner logos
 
 A dark strip along the bottom (`components/Footer.tsx`, always shown, also while presenting or

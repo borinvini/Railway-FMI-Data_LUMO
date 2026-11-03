@@ -86,7 +86,7 @@ export default function RouteDetails({ routes, active, onActive, startName, endN
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-[rgba(2,6,13,0.55)] p-4"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-[rgba(2,6,13,0.55)] p-4 max-md:p-0"
       onClick={onClose}
     >
       <div
@@ -94,13 +94,13 @@ export default function RouteDetails({ routes, active, onActive, startName, endN
         aria-modal="true"
         aria-labelledby="route-details-title"
         onClick={(e) => e.stopPropagation()}
-        className="relative max-h-[90vh] card w-[min(860px,100%)] overflow-y-auto !rounded-xl !p-6 !shadow-[0_20px_60px_rgba(0,0,0,0.5)]"
+        className="relative max-h-[90vh] card w-[min(860px,100%)] overflow-y-auto !rounded-xl !p-6 !shadow-[0_20px_60px_rgba(0,0,0,0.5)] max-md:h-full max-md:max-h-none max-md:w-full max-md:!rounded-none max-md:!px-4 max-md:!pt-[calc(14px+env(safe-area-inset-top))] max-md:!pb-[calc(24px+env(safe-area-inset-bottom))]"
       >
         <button
           type="button"
           onClick={onClose}
           aria-label="Close"
-          className="absolute top-2 right-2 flex h-11 w-11 cursor-pointer items-center justify-center text-lg text-(--card-ink-3) hover:text-(--card-ink)"
+          className="absolute top-2 right-2 flex h-11 w-11 cursor-pointer items-center justify-center text-lg text-(--card-ink-3) hover:text-(--card-ink) max-md:fixed max-md:top-[calc(6px+env(safe-area-inset-top))] max-md:right-2 max-md:z-10 max-md:rounded-full max-md:bg-(--card) max-md:text-(--card-ink) max-md:shadow-[0_2px_10px_rgba(0,0,0,0.25)]"
         >
           ✕
         </button>
@@ -114,7 +114,25 @@ export default function RouteDetails({ routes, active, onActive, startName, endN
         </div>
 
         {routes.length > 1 && (
-          <div role="tablist" aria-label="Routes between these stations" className="mt-3 flex flex-wrap gap-2">
+          // Phones: one native picker instead of a wall of tabs (up to a dozen routes), so the figures
+          // stay near the top of the screen.
+          <label className="mt-3 block md:hidden">
+            <span className="mb-1 block text-sm text-(--card-ink-2)">The trains run {routes.length} ways. Pick one:</span>
+            <select
+              value={active}
+              onChange={(e) => onActive(Number(e.target.value))}
+              className="min-h-11 w-full cursor-pointer rounded-lg border border-[rgba(0,47,108,0.3)] bg-[rgba(255,255,255,0.35)] px-3 text-[15px] text-(--card-ink)"
+            >
+              {routes.map((r, i) => (
+                <option key={i} value={i}>
+                  Route {i + 1}: {labels[i]}, {trainsText(r.trains)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {routes.length > 1 && (
+          <div role="tablist" aria-label="Routes between these stations" className="mt-3 flex flex-wrap gap-2 max-md:hidden">
             {routes.map((r, i) => (
               <button
                 key={i}

@@ -62,19 +62,19 @@ export default function DelayPredictor({ code, stationName, file, loadFailed, on
   const dayFew = st ? st.few[pick.month - 1][pick.day].map((v) => v === 1) : []
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[rgba(2,6,13,0.55)] p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[rgba(2,6,13,0.55)] p-4 max-md:p-0" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="predictor-title"
         onClick={(e) => e.stopPropagation()}
-        className="card relative max-h-[94vh] w-[min(780px,100%)] overflow-y-auto !rounded-xl !px-6 !py-5 !shadow-[0_20px_60px_rgba(0,0,0,0.5)]"
+        className="card relative max-h-[94vh] w-[min(780px,100%)] overflow-y-auto !rounded-xl !px-6 !py-5 !shadow-[0_20px_60px_rgba(0,0,0,0.5)] max-md:h-full max-md:max-h-none max-md:w-full max-md:!rounded-none max-md:!px-4 max-md:!pt-[calc(14px+env(safe-area-inset-top))] max-md:!pb-[calc(24px+env(safe-area-inset-bottom))]"
       >
         <button
           type="button"
           onClick={onClose}
           aria-label="Close"
-          className="absolute top-2 right-2 flex h-11 w-11 cursor-pointer items-center justify-center text-lg text-(--card-ink-3) hover:text-(--card-ink)"
+          className="absolute top-2 right-2 flex h-11 w-11 cursor-pointer items-center justify-center text-lg text-(--card-ink-3) hover:text-(--card-ink) max-md:fixed max-md:top-[calc(6px+env(safe-area-inset-top))] max-md:right-2 max-md:z-10 max-md:rounded-full max-md:bg-(--card) max-md:text-(--card-ink) max-md:shadow-[0_2px_10px_rgba(0,0,0,0.25)]"
         >
           ✕
         </button>

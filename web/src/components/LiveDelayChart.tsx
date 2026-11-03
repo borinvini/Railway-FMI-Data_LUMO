@@ -23,7 +23,7 @@ const levelColor = (minutes: number) => rgbCss(routeBadgeStep(minutes).fill)
  * area under it is banded in the same three colours, so the thresholds are visible at a glance. Axes
  * are fixed from the whole route.
  */
-export default function LiveDelayChart({ profile }: { profile: DelayProfile }) {
+export default function LiveDelayChart({ profile, chartHeight = 150, title = true }: { profile: DelayProfile; chartHeight?: number; title?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -111,7 +111,7 @@ export default function LiveDelayChart({ profile }: { profile: DelayProfile }) {
 
   return (
     <div className="pointer-events-auto rounded-[10px] border border-(--line) bg-(--surface) px-[18px] pt-3 pb-2.5 backdrop-blur-[8px]">
-      <div className="text-sm text-(--muted)">Delay at each station, average</div>
+      {title && <div className="text-sm text-(--muted)">Delay at each station, average</div>}
       <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-sm text-(--muted)">
         {ROUTE_BADGE_STEPS.map((step) => (
           <span key={step.label} className="flex items-center gap-1.5">
@@ -120,7 +120,7 @@ export default function LiveDelayChart({ profile }: { profile: DelayProfile }) {
           </span>
         ))}
       </div>
-      <div className="relative mt-2 h-[150px]">
+      <div className="relative mt-2" style={{ height: chartHeight }}>
         <canvas ref={canvasRef} role="img" aria-label="Line chart of the average delay at each station along the route, drawn as the train moves" />
       </div>
     </div>

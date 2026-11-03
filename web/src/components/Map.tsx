@@ -7,7 +7,7 @@ import { useEffect, useRef } from 'react'
 import { delayColor, NETWORK_LINE_COLOR, NETWORK_LINE_CORE_COLOR, routeBadgeStep } from '../lib/colors'
 import { TOP_10_STATION_CODES } from '../lib/importantStations'
 import type { StationValue } from '../lib/routeStats'
-import { DEFAULT_VIEW, LEFT_PANEL_FRACTION, restyleBasemap } from '../lib/mapStyle'
+import { DEFAULT_VIEW, FINLAND_BOUNDS, LEFT_PANEL_FRACTION, PHONE_PITCH, restyleBasemap } from '../lib/mapStyle'
 import { LIVE_TRAIN_ICON, ROUTE_BADGE_ICON, STATION_MARKER_ICON, STATION_MARKER_OUTLINE_ICON, WEATHER_PIN_GREY_ICON, WEATHER_PIN_ICON } from '../lib/markerIcon'
 import { LIVE, sample, trailPath, type LiveSample, type LiveTimeline } from '../lib/liveTrain'
 import { setLiveKm } from '../lib/liveStore'
@@ -67,16 +67,59 @@ maplibregl.setWorkerUrl(`${import.meta.env.BASE_URL}maplibre/maplibre-gl-worker.
 const BASEMAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/dark'
 
 /** Fit the camera to the whole route, keeping the visitor's tilt and rotation (fitBounds would
- *  otherwise reset the bearing to 0). Used when a route is chosen and when a Live run ends. */
-function fitRoutePaths(map: maplibregl.Map, paths: [number, number][][], duration: number) {
+ *  otherwise reset the bearing to 0). Used when a route is chosen and when a Live run ends. The
+ *  padding is added to the map's own padding (on a phone, the bar, dock and any open sheet). */
+function fitRoutePaths(map: maplibregl.Map, paths: [number, number][][], duration: number, phone = false) {
   const pts = paths.flat()
   if (pts.length === 0) return
   const lons = pts.map((p) => p[0])
   const lats = pts.map((p) => p[1])
   map.fitBounds(
     [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
-    { padding: { top: 110, bottom: 110, left: 60, right: 80 }, maxZoom: 8, bearing: map.getBearing(), pitch: map.getPitch(), duration },
+    {
+      padding: phone ? { top: 40, bottom: 30, left: 36, right: 36 } : { top: 110, bottom: 110, left: 60, right: 80 },
+      maxZoom: 8, bearing: map.getBearing(), pitch: map.getPitch(), duration,
+    },
   )
+}
+
+/** Space taken by the phone layout's bars and sheets, in px from each edge of the map. */
+export interface MapInsets {
+  top: number
+  bottom: number
+}
+
+// Web Mercator y of a latitude, as a fraction of the world (0 = north edge, 1 = south edge).
+const mercY = (lat: number) => {
+  const s = Math.sin((lat * Math.PI) / 180)
+  return 0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)
+}
+const latOfMercY = (y: number) => (Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) * 180) / Math.PI
+// Where the phone home view aims, as a share of Finland's height from its north edge (0.5 = middle).
+const PHONE_CENTER_SHIFT = 0.58
+// The tilt also shrinks the far (northern) part, so the tilted Finland is shorter than the top-down fit:
+// zoom in by this much to fill the space again.
+const PHONE_ZOOM_BOOST = 0.28
+
+/** The home camera: DEFAULT_VIEW on desktop (fixed numbers, see CLAUDE.md "Camera"). On a phone,
+ *  Finland fitted into the screen minus `pad` (the bars), tilted by PHONE_PITCH, facing north. Worked
+ *  out from the map size alone (not the camera's current padding, which may be mid-animation), so it
+ *  is the same every time. The fit is top-down; tilting stretches the near (southern) end, so it is
+ *  zoomed out a touch to keep the south coast on screen. */
+function homeView(map: maplibregl.Map, phone: boolean, pad: { top: number; bottom: number }) {
+  if (!phone) return DEFAULT_VIEW
+  const [[w, s], [e, n]] = FINLAND_BOUNDS
+  const { clientWidth: width, clientHeight: height } = map.getContainer()
+  const availW = width - 20
+  // 56 px more at the bottom: the legend pill sits there, over the map.
+  const availH = height - pad.top - pad.bottom - 16 - 56
+  const dx = (e - w) / 360
+  const dy = mercY(s) - mercY(n)
+  const zoom = Math.log2(Math.min(availW / (dx * 512), availH / (dy * 512))) + PHONE_ZOOM_BOOST
+  // The tilt enlarges the south and shrinks the north, which pushes Finland down the screen: aim a
+  // little south of the middle so it sits centred between the bars again.
+  const center: [number, number] = [(w + e) / 2, latOfMercY(mercY(n) + dy * PHONE_CENTER_SHIFT)]
+  return { center, zoom: Math.min(Math.max(zoom, 3.5), 9), pitch: PHONE_PITCH, bearing: 0 }
 }
 
 // Map interaction handlers switched off while a Live run drives the camera.
@@ -142,6 +185,10 @@ interface MapProps {
   presentCycle: number
   /** One full tour has been flown (the flight stops; App moves on to the random route). */
   onPresentLoop: () => void
+  /** Phone layout: its own home view, no left panel padding, and `insets` as top/bottom padding. */
+  phone: boolean
+  /** Phone layout: the bars and the open sheet, kept clear by the camera (ignored on desktop). */
+  insets: MapInsets
 }
 
 /**
@@ -152,8 +199,12 @@ interface MapProps {
  * deck.gl are plain JS libraries here (no react-map-gl): the Map/overlay instances live in
  * refs and are created once in an effect, then kept in sync with props.
  */
-export default function MapView({ stations, connections, finland, selected, onSelect, routeHighlight, routeValues, onRouteClick, activeRoute, resetSignal, onDriftChange, onReady, weatherPins, selectedWeatherPin, showWeather, onWeatherPinClick, live, onLiveProgress, onLiveEnd, presenting, presentCycle, onPresentLoop }: MapProps) {
+export default function MapView({ stations, connections, finland, selected, onSelect, routeHighlight, routeValues, onRouteClick, activeRoute, resetSignal, onDriftChange, onReady, weatherPins, selectedWeatherPin, showWeather, onWeatherPinClick, live, onLiveProgress, onLiveEnd, presenting, presentCycle, onPresentLoop, phone, insets }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const phoneRef = useRef(phone)
+  phoneRef.current = phone
+  const insetsRef = useRef(insets)
+  insetsRef.current = insets
   const mapRef = useRef<maplibregl.Map | null>(null)
   const overlayRef = useRef<MapboxOverlay | null>(null)
   const hoveredRef = useRef<StationFeature | null>(null)
@@ -204,6 +255,12 @@ export default function MapView({ stations, connections, finland, selected, onSe
   routeValuesRef.current = routeValues
   onRouteClickRef.current = onRouteClick
   activeRouteRef.current = activeRoute
+
+  /** Camera padding: the left statistics column on desktop; the bars and open sheet on a phone. */
+  function mapPadding(map: maplibregl.Map) {
+    if (phoneRef.current) return { top: insetsRef.current.top, bottom: insetsRef.current.bottom, left: 0, right: 0 }
+    return { left: Math.round(map.getContainer().clientWidth * LEFT_PANEL_FRACTION), top: 0, right: 0, bottom: 0 }
+  }
 
   function buildLayers() {
     const currentStations = stationsRef.current
@@ -683,12 +740,24 @@ export default function MapView({ stations, connections, finland, selected, onSe
       // Draw the camera centre in the middle of the area right of the statistics column,
       // without touching DEFAULT_VIEW. Padding is persistent camera state, so Reset view and
       // station fly-tos honour it too.
+      // On a phone there is no left column: the padding is the top bar and the dock (plus any open
+      // sheet), so Finland and every fit land in the free part of the screen.
       const applyPadding = () => {
         if (!map) return
-        map.setPadding({ left: Math.round(map.getContainer().clientWidth * LEFT_PANEL_FRACTION), top: 0, right: 0, bottom: 0 })
+        map.setPadding(mapPadding(map))
       }
       applyPadding()
       map.on('resize', applyPadding)
+      if (phoneRef.current) {
+        map.jumpTo(homeView(map, true, insetsRef.current))
+        // The compact attribution starts unfolded; on a phone it would run across the map, so fold it
+        // to its (i) button straight away (it is still one tap away).
+        map.once('load', () => {
+          const attrib = map?.getContainer().querySelector('.maplibregl-ctrl-attrib')
+          attrib?.classList.remove('maplibregl-compact-show')
+          attrib?.removeAttribute('open')
+        })
+      }
 
       // Fade the loading veil once the first view has its tiles; the timeout keeps a slow or
       // failed tile request from leaving the veil up for good.
@@ -705,12 +774,13 @@ export default function MapView({ stations, connections, finland, selected, onSe
         if (!map) return
         // Panning counts too: compare where the default centre would be drawn with where the
         // camera centre is drawn (> 40 px apart), so moving to another place shows the button.
-        const home = map.project(DEFAULT_VIEW.center)
+        const view = homeView(map, phoneRef.current, insetsRef.current)
+        const home = map.project(view.center)
         const here = map.project(map.getCenter())
         const drifted =
-          Math.abs(map.getPitch() - DEFAULT_VIEW.pitch) > 1 ||
-          Math.abs(map.getBearing() - DEFAULT_VIEW.bearing) > 1 ||
-          Math.abs(map.getZoom() - DEFAULT_VIEW.zoom) > 0.3 ||
+          Math.abs(map.getPitch() - view.pitch) > 1 ||
+          Math.abs(map.getBearing() - view.bearing) > 1 ||
+          Math.abs(map.getZoom() - view.zoom) > 0.3 ||
           Math.hypot(home.x - here.x, home.y - here.y) > 40
         onDriftRef.current(drifted)
       }
@@ -727,7 +797,8 @@ export default function MapView({ stations, connections, finland, selected, onSe
       map.on('move', () => { if (routeRef.current) scheduleRebuild() })
 
       const overlay = new MapboxOverlay({
-        interleaved: false, layers: buildLayers(), pickingRadius: 10,
+        // A fingertip is less precise than a mouse pointer: a wider pick on phones.
+        interleaved: false, layers: buildLayers(), pickingRadius: phoneRef.current ? 16 : 10,
         getTooltip: ({ object, layer }) => {
           if (!object) return null
           const layerId = layer?.id ?? ''
@@ -780,8 +851,12 @@ export default function MapView({ stations, connections, finland, selected, onSe
       ;(window as unknown as { map: maplibregl.Map; overlay: MapboxOverlay }).map = map
       ;(window as unknown as { map: maplibregl.Map; overlay: MapboxOverlay }).overlay = overlay
 
-      map.on('click', () => {
-        if (!hoveredRef.current && !routeHoverRef.current && !emsHoverRef.current && !emsClickRef.current) onSelectRef.current(null)
+      // A click on empty map clears the selection. The hover refs tell a mouse click on a marker
+      // apart, but a finger tap has no hover before it, so also ask deck.gl what is under the point.
+      map.on('click', (e) => {
+        if (hoveredRef.current || routeHoverRef.current || emsHoverRef.current || emsClickRef.current) return
+        const hit = overlayRef.current?.pickObject({ x: e.point.x, y: e.point.y, radius: phoneRef.current ? 16 : 10 })
+        if (!hit?.object) onSelectRef.current(null)
       })
       onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') onSelectRef.current(null) }
       document.addEventListener('keydown', onKeyDown)
@@ -824,6 +899,11 @@ export default function MapView({ stations, connections, finland, selected, onSe
   useEffect(() => {
     const map = mapRef.current
     if (!selected || !map) return
+    return afterPhoneLayout(map, () => flyToStation(map, selected))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected])
+
+  function flyToStation(map: maplibregl.Map, selected: StationFeature) {
     const ems = selected.ems
     if (!ems) {
       map.flyTo({ center: [selected.lon, selected.lat], duration: 600 })
@@ -837,9 +917,58 @@ export default function MapView({ stations, connections, finland, selected, onSe
         [Math.min(selected.lon, ems.lon), Math.min(selected.lat, ems.lat)],
         [Math.max(selected.lon, ems.lon), Math.max(selected.lat, ems.lat)],
       ],
-      { padding: { top: 140, bottom: 140, left: 80, right: 120 }, maxZoom: 8.5, bearing: map.getBearing(), pitch: map.getPitch(), duration: 600 },
+      {
+        padding: phoneRef.current ? { top: 70, bottom: 50, left: 60, right: 60 } : { top: 140, bottom: 140, left: 80, right: 120 },
+        maxZoom: 8.5, bearing: map.getBearing(), pitch: map.getPitch(), duration: 600,
+      },
     )
-  }, [selected])
+  }
+
+  /** Run a camera move. On a phone, wait a moment first: the move usually comes with a sheet opening
+   *  or closing (a route found closes the route sheet, a station opens its sheet, Reset closes them), and
+   *  the fit must use the space that is left once that has happened, not the space before it. The map
+   *  takes the final padding first, so the move and the padding don't fight. Desktop: right away. */
+  function afterPhoneLayout(map: maplibregl.Map, move: () => void) {
+    if (!phoneRef.current) {
+      move()
+      return
+    }
+    const timer = window.setTimeout(() => {
+      map.setPadding(mapPadding(map))
+      move()
+    }, 120)
+    return () => window.clearTimeout(timer)
+  }
+
+  // Phone layout: the bars and sheets change the free part of the screen, so the padding follows
+  // them (eased, so the map glides up when a sheet opens). Crossing the phone/desktop width also
+  // brings the matching home view when nothing is selected.
+  const phoneSeenRef = useRef(phone)
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    const pad = mapPadding(map)
+    const crossed = phoneSeenRef.current !== phone
+    phoneSeenRef.current = phone
+    if (crossed && !selectedRef.current && !routeRef.current) {
+      map.jumpTo({ ...homeView(map, phone, insetsRef.current), padding: pad })
+      return
+    }
+    if (liveFrameRef.current) {
+      map.setPadding(pad)
+      return
+    }
+    // A padding change stops any camera animation, so a sheet that opens while the camera flies to a
+    // station would leave it half way. Wait for the flight to land, then glide into the new padding
+    // (the latest one: the sheet may have resized meanwhile).
+    const glide = () => map.easeTo({ padding: mapPadding(map), duration: 300 })
+    if (map.isMoving()) {
+      map.once('moveend', glide)
+      return () => { map.off('moveend', glide) }
+    }
+    glide()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phone, insets.top, insets.bottom])
 
   // A new set of highlighted routes starts the click-to-cycle order over.
   useEffect(() => { lastRouteClickRef.current = null }, [routeHighlight])
@@ -850,11 +979,11 @@ export default function MapView({ stations, connections, finland, selected, onSe
     const map = mapRef.current
     if (!map) return
     if (routeHighlight) {
-      fitRoutePaths(map, routeHighlight.paths, 800)
       hadRouteRef.current = true
+      return afterPhoneLayout(map, () => fitRoutePaths(map, routeHighlight.paths, 800, phoneRef.current))
     } else if (hadRouteRef.current) {
       hadRouteRef.current = false
-      map.flyTo({ ...DEFAULT_VIEW, duration: 600 })
+      return afterPhoneLayout(map, () => map.flyTo({ ...homeView(map, phoneRef.current, insetsRef.current), padding: mapPadding(map), duration: 600 }))
     }
   }, [routeHighlight])
 
@@ -918,7 +1047,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
       if (s.done) {
         ended = true
         // Arrived: zoom back out to the full route (App then drops `live`, which runs cleanup).
-        if (routeRef.current) fitRoutePaths(map, routeRef.current.paths, LIVE.fitMs)
+        if (routeRef.current) fitRoutePaths(map, routeRef.current.paths, LIVE.fitMs, phoneRef.current)
         onLiveEndRef.current()
         return
       }
@@ -1012,7 +1141,8 @@ export default function MapView({ stations, connections, finland, selected, onSe
 
   // Reset view: App has already cleared the selection/route; this just flies the camera home.
   useEffect(() => {
-    if (resetSignal > 0) mapRef.current?.flyTo({ ...DEFAULT_VIEW, duration: 600 })
+    const map = mapRef.current
+    if (resetSignal > 0 && map) return afterPhoneLayout(map, () => map.flyTo({ ...homeView(map, phoneRef.current, insetsRef.current), padding: mapPadding(map), duration: 600 }))
   }, [resetSignal])
 
   return (

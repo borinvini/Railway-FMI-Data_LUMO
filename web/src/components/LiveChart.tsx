@@ -20,7 +20,7 @@ const FONT = "'Barlow Condensed', Barlow, system-ui, sans-serif"
  * pushed straight into Chart.js from the animation loop's distance (lib/liveStore.ts), never through
  * React state. Averages at each stop, not readings.
  */
-export default function LiveChart({ profile }: { profile: LiveProfile }) {
+export default function LiveChart({ profile, chartHeight = 170, title = true }: { profile: LiveProfile; chartHeight?: number; title?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -101,7 +101,7 @@ export default function LiveChart({ profile }: { profile: LiveProfile }) {
 
   return (
     <div className="pointer-events-auto rounded-[10px] border border-(--line) bg-(--surface) px-[18px] pt-3 pb-2.5 backdrop-blur-[8px]">
-      <div className="text-sm text-(--muted)">Temperature and snow along the way</div>
+      {title && <div className="text-sm text-(--muted)">Temperature and snow along the way</div>}
       <div className="mt-1 flex items-center gap-4 text-sm text-(--muted)">
         <span className="flex shrink-0 items-center gap-3">
           <span className="flex items-center gap-1.5">
@@ -114,7 +114,7 @@ export default function LiveChart({ profile }: { profile: LiveProfile }) {
           </span>
         </span>
       </div>
-      <div className="relative mt-2 h-[170px]">
+      <div className="relative mt-2" style={{ height: chartHeight }}>
         <canvas ref={canvasRef} role="img" aria-label="Chart of temperature and snow depth along the route, drawn as the train moves" />
       </div>
     </div>

@@ -89,6 +89,27 @@ body,
 .maplibregl-ctrl-bottom-left {
   bottom: var(--footer-h) !important;
 }
+
+/* Phone layout (App sets data-phone and the two lengths): MapLibre's compass sits under the top bar
+   and its attribution above the dock or the open sheet. */
+[data-phone] .maplibregl-ctrl-top-right {
+  top: calc(var(--phone-top) + 8px) !important;
+  right: 8px !important;
+}
+[data-phone] .maplibregl-ctrl-bottom-right,
+[data-phone] .maplibregl-ctrl-bottom-left {
+  bottom: var(--phone-bottom) !important;
+}
+/* Cards placed inside a phone sheet lose their own frame: the sheet is the card. */
+.sheet-body .card {
+  position: static;
+  width: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
 .deck-tooltip {
   font: 400 15px var(--font-sans) !important;
 }

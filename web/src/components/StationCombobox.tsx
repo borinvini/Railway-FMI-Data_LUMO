@@ -112,7 +112,7 @@ export default function StationCombobox({
             ref={listRef}
             id={`${id}-list`}
             role="listbox"
-            className="absolute top-full left-0 z-10 mt-1 max-h-[300px] w-full overflow-y-auto rounded-lg border border-[rgba(0,47,108,0.25)] bg-[#d6e2f0] py-1 text-base shadow-[0_8px_24px_rgba(0,0,0,0.35)]"
+            className="absolute top-full left-0 z-10 mt-1 max-h-[min(300px,40dvh)] w-full overflow-y-auto rounded-lg border border-[rgba(0,47,108,0.25)] bg-[#d6e2f0] py-1 text-base shadow-[0_8px_24px_rgba(0,0,0,0.35)]"
           >
             {matches.length === 0 && <li className="px-3 py-2.5 text-(--card-ink-3)">No station found</li>}
             {matches.map((s, i) => (
