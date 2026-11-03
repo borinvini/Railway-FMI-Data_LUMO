@@ -17,6 +17,8 @@ interface StationPanelProps {
   period: string
   /** Weather condition names from summary.json; null until it has loaded. */
   conditionDefs: ConditionDef[] | null
+  /** Open the AI model pop-up; only given for the stations with a trained model. */
+  onAskModel?: () => void
 }
 
 /**
@@ -24,7 +26,7 @@ interface StationPanelProps {
  * every train that stops there, any route/train type -- see scripts/routes_lib.py
  * `station_summary`, not scoped to a single route.
  */
-export default function StationPanel({ station, onClose, onShowWeather, period, conditionDefs }: StationPanelProps) {
+export default function StationPanel({ station, onClose, onShowWeather, period, conditionDefs, onAskModel }: StationPanelProps) {
   const label = (s: string) => s.replace(/ asema$/, '')
   const weather = station.weather
 
@@ -59,6 +61,16 @@ export default function StationPanel({ station, onClose, onShowWeather, period, 
         <span className="text-(--card-ink-2)">Cancelled</span>
         <span>{station.cancelledPct.toFixed(0)}%</span>
       </div>
+
+      {onAskModel && (
+        <button
+          type="button"
+          onClick={onAskModel}
+          className="mt-1 mb-1 flex min-h-11 w-full cursor-pointer items-center justify-center rounded-lg bg-(--card-ink) text-[15px] font-medium text-white hover:opacity-90"
+        >
+          Ask the AI model
+        </button>
+      )}
 
       {station.ems && (
         <div className="mt-1 border-t border-(--card-line) pt-2.5 text-[15px] text-(--card-ink-2)">

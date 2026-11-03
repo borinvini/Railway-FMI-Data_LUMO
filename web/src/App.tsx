@@ -12,6 +12,8 @@ import LiveCard from './components/LiveCard'
 import LiveChart from './components/LiveChart'
 import LiveDelayChart from './components/LiveDelayChart'
 import WeatherStationDetails from './components/WeatherStationDetails'
+import DelayPredictor from './components/DelayPredictor'
+import { PREDICTOR_CODES } from './lib/predictor'
 import { findRoutes, pickRandomRoute, toHighlight } from './lib/routeFinder'
 import { PRESENT } from './lib/presentation'
 import { buildLiveRoute, buildTimeline, type LiveTimeline } from './lib/liveTrain'
@@ -19,7 +21,7 @@ import { buildDelayProfile, buildLiveProfile } from './lib/liveProfile'
 import { routeStationValues, routeWeatherPins, summarizeRoute, type StationValue } from './lib/routeStats'
 import { formatSnow, formatTemp } from './lib/weatherFormat'
 import { periodLabel, scopeOf } from './lib/period'
-import type { ConnectionFeature, EmsStationFile, FinlandGeoJSON, RoutePattern, RouteStatsFile, RouteTrendsFile, StationFeature, StationStats, SummaryFile, WeatherPin } from './lib/types'
+import type { ConnectionFeature, EmsStationFile, FinlandGeoJSON, PredictorFile, RoutePattern, RouteStatsFile, RouteTrendsFile, StationFeature, StationStats, SummaryFile, WeatherPin } from './lib/types'
 
 const NO_VALUES = new Map<string, StationValue>()
 // A kiosk left alone this long goes back to the start view (see the idle effect in App).
@@ -57,6 +59,11 @@ export default function App() {
   const [showWeather, setShowWeather] = useState(true)
   const [emsFiles, setEmsFiles] = useState<Record<string, EmsStationFile>>({})
   const [emsFailed, setEmsFailed] = useState(false)
+  // "Ask the AI model" pop-up for the selected station (one of PREDICTOR_CODES); predictor.json loads
+  // the first time it opens.
+  const [predictorOpen, setPredictorOpen] = useState(false)
+  const [predictorFile, setPredictorFile] = useState<PredictorFile | null>(null)
+  const [predictorFailed, setPredictorFailed] = useState(false)
   // Live: the run in progress (a train riding the busiest variant of the route) and the index of
   // the passenger stop it is at, for the now-playing card.
   const [live, setLive] = useState<LiveTimeline | null>(null)
@@ -137,6 +144,21 @@ export default function App() {
       .catch(() => { if (!cancelled) setEmsFailed(true) })
     return () => { cancelled = true }
   }, [emsFile, emsFiles])
+
+  // The AI model pop-up belongs to the selected station: another station (or none) closes it. Keyed on
+  // the code, so a year change, which refreshes the station's figures, does not.
+  const selectedCode = selected?.code ?? null
+  useEffect(() => { setPredictorOpen(false) }, [selectedCode])
+  useEffect(() => {
+    if (!predictorOpen || predictorFile) return
+    let cancelled = false
+    setPredictorFailed(false)
+    fetch('data/predictor.json')
+      .then((r) => r.json() as Promise<PredictorFile>)
+      .then((data) => { if (!cancelled) setPredictorFile(data) })
+      .catch(() => { if (!cancelled) setPredictorFailed(true) })
+    return () => { cancelled = true }
+  }, [predictorOpen, predictorFile])
 
   // A different pair of stations (or clearing/swapping) means the open details no longer apply.
   useEffect(() => { setDetailIndex(null) }, [routeStart, routeEnd])
@@ -298,6 +320,7 @@ export default function App() {
     setDetailIndex(null)
     setWeatherPin(null)
     setTrendsOpen(false)
+    setPredictorOpen(false)
     armedRef.current = true
     setShowPhase('aerial')
     setPresentCycle((n) => n + 1)
@@ -371,6 +394,7 @@ export default function App() {
     setDetailIndex(null)
     setWeatherPin(null)
     setTrendsOpen(false)
+    setPredictorOpen(false)
     setYear(null)
     setResetSignal((n) => n + 1)
   }, [])
@@ -558,6 +582,17 @@ export default function App() {
           onShowWeather={() => selectedPin && setWeatherPin(selectedPin)}
           period={period}
           conditionDefs={summary?.conditions ?? null}
+          onAskModel={PREDICTOR_CODES.has(selected.code) ? () => setPredictorOpen(true) : undefined}
+        />
+      )}
+
+      {predictorOpen && selected && (
+        <DelayPredictor
+          code={selected.code}
+          stationName={selected.name.replace(/ asema$/, '')}
+          file={predictorFile}
+          loadFailed={predictorFailed}
+          onClose={() => setPredictorOpen(false)}
         />
       )}
 

@@ -199,3 +199,29 @@ export interface SummaryFile {
   yearsAbove: Record<string, [number, number]>
   trend: { avg: (number | null)[]; onTime: (number | null)[]; arrivals: (number | null)[] }
 }
+
+/** One station of predictor.json (scripts/build_predictor.py): its trained model's chance of a
+ *  disruption for every month, day and time of day. */
+export interface PredictorStation {
+  /** Feature scenario of the paper: "S1", "S5" or "S11". */
+  scenario: string
+  /** What the model was given, in plain words. */
+  uses: string
+  testAuc: number
+  /** Share of events that were disrupted at this station in the training years (%). */
+  usualPct: number
+  events: number
+  /** Share of the station's events in each time slot of the day (%). */
+  slotShare: number[]
+  /** Chance in per mille, [month 0-11][day Mon=0..Sun=6][slot]. */
+  p: number[][][]
+  /** 1 where fewer than 10 real trains ran in that month/day/slot (the answer is a rough guess). */
+  few: number[][][]
+}
+
+export interface PredictorFile {
+  definition: string
+  period: string
+  stepMinutes: number
+  stations: Record<string, PredictorStation>
+}

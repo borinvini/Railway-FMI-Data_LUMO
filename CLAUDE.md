@@ -371,6 +371,8 @@ picker only switches files. **Start-up files (about 335 KB, budget 600 KB):**
 - `route_trends.json` (~247 KB) — per service (>= 20 trains in total) delay per month in tenths of a
   minute plus trains per month; loaded when the route pop-up opens.
 - `ems/<slug>.json` (128 files, <= 7 KB) — one weather station: tiles per scope and a monthly series.
+- `predictor.json` (~170 KB) — the AI model's chance per month/day/time for the 7 modeled stations,
+  from `scripts/build_predictor.py` (not `build_data.py`), see *Delay predictor*.
 
 Keep the start-up payload to a few hundred KB; everything else is lazy.
 
@@ -501,6 +503,44 @@ another route ends it; map pan/zoom is locked while it runs, and the 90 s idle r
 - Duration is about 40-70 s (moving 12-45 s plus ~0.9 s at every passenger station, shortened to
   stay under 70 s).
 - To discard: `git switch station-network-map && git branch -D live-train`.
+
+## Delay predictor ("Ask the AI model")
+
+The 7 stations modeled in the paper (HKI, PSL, TPE, SK, YV, OL, ROI) get an **Ask the AI model**
+button in the station panel. It opens `components/DelayPredictor.tsx`: the visitor picks a month,
+a day of the week and a time (30-minute steps), and sees the chance that a train there is
+**disrupted = late by 1 min or more, or cancelled** (the paper's label, not the site's 5-minute
+rule; the copy says so), plus how far that is from the station's usual share, and a bar strip of
+the chance through the day. Weather is not an input.
+
+- **What a number is.** For a month/day/slot where at least 10 real trains stopped (2018-2024), the
+  model's mean answer for *those* trains, with the weather they had (~98% of events sit in such
+  cells; 85% at Rovaniemi). Other cells (`few` = 1: drawn faint, number dimmed, "rough guess") ask the
+  model about made-up trains: the slot's real minutes, 60 real weather situations from that month
+  within 90 min of the slot. Do not go back to one "median weather" row or exact clock times: time of
+  day effectively identifies single trains, and those answers were up to 30 points from the real
+  late rates. The build log prints the gap through the day (now 0.5-2.3 points mean, 3.8 at ROI).
+
+- **Precomputed, no model in the browser.** `scripts/build_predictor.py` loads each station's best
+  LightGBM `.pkl` (paper table "best": S5 at HKI/OL, S1 at PSL, S11 elsewhere) from
+  `../Railway-FMI-Data-CSV-Files-v2/AI Results/<n - CODE>/results/<scenario>/` and predicts every
+  month × day × slot (4,032 per station) into `web/public/data/predictor.json` (~170 KB, lazy: loaded
+  when the pop-up first opens). Chance in per mille, `p[month][day Mon=0..Sun=6][slot]`, plus `few`.
+  A full run takes ~10 min.
+- Inputs as in training: `hour/month/day_week` sin/cos (Finnish local time; training day code
+  Sunday = 1 .. Saturday = 7), then log1p on the skewed weather columns and the RobustScaler from
+  `weather_scaler.joblib` (centre/scale applied directly).
+- Checked in a real browser with Playwright (installed in the session scratchpad, not the repo):
+  fits 1280x720 without scrolling, months in one row, works at 390 px wide.
+- The models were trained with `scale_pos_weight = neg/pos`, so the raw output is corrected with
+  `logit − ln(spw)`. The script checks itself and stops on failure: scaling reproduces the training's
+  scaled test file, test AUC equals the paper's, corrected mean is within 3 points of the real share
+  (it is within 0.5-2.7). Low chances are somewhat too high at some stations (reliability table in the
+  log), so the copy calls it a guess.
+- It needs lightgbm + scikit-learn, which the project `.venv` lacks (and that `.venv` was made on
+  another machine): run it with the training conda env,
+  `C:/Users/<you>/AppData/Local/miniconda3/envs/venv_rail_fmi_training/python.exe scripts/build_predictor.py`
+  (`--step-minutes`, `--ai-results`). Idempotent. Rerun only if the models change.
 
 ## Presentation mode (for an unattended screen)
 
