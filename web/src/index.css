@@ -17,6 +17,15 @@
   --card-ink-2: #243f5e;
   --card-ink-3: #3f5873;
   --card-line: rgba(0, 47, 108, 0.14);
+
+  /* Footer strip (components/Footer.tsx); the bottom row, left column and map attribution keep
+     clear of it. Two rows (logos above the credit) below 1024 px. */
+  --footer-h: 52px;
+}
+@media (max-width: 1023px) {
+  :root {
+    --footer-h: 76px;
+  }
 }
 
 /* Barlow (body) + Barlow Condensed (big numbers, titles): the railway-signage look. Both are
@@ -75,6 +84,10 @@ body,
 }
 .maplibregl-ctrl-attrib a {
   color: #62778e !important;
+}
+.maplibregl-ctrl-bottom-right,
+.maplibregl-ctrl-bottom-left {
+  bottom: var(--footer-h) !important;
 }
 .deck-tooltip {
   font: 400 15px var(--font-sans) !important;

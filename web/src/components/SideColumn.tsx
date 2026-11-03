@@ -9,7 +9,7 @@ import type { ReactNode } from 'react'
  */
 export default function SideColumn({ children }: { children: ReactNode }) {
   return (
-    <div className="pointer-events-none absolute top-3 left-3 z-40 flex max-h-[calc(100vh-24px)] w-[calc(clamp(300px,26vw,400px)+16px)] flex-col gap-3 overflow-y-auto p-2">
+    <div className="pointer-events-none absolute top-3 left-3 z-40 flex max-h-[calc(100vh-24px-var(--footer-h))] w-[calc(clamp(300px,26vw,400px)+16px)] flex-col gap-3 overflow-y-auto p-2">
       {Array.isArray(children)
         ? children.map((child, i) => <div key={i} className="pointer-events-auto">{child}</div>)
         : <div className="pointer-events-auto">{children}</div>}

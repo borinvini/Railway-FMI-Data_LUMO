@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import MapView from './components/Map'
+import Footer from './components/Footer'
 import Legend from './components/Legend'
 import DelayTrends from './components/DelayTrends'
 import PeriodSummary from './components/PeriodSummary'
@@ -510,7 +511,7 @@ export default function App() {
       {/* Legend and Reset view share one row, so the button never overlaps the legend. The row
           starts to the right of the left column (not under it): the column can be tall, and the
           legend grows when a route is shown. */}
-      <div className={`pointer-events-none absolute bottom-6 z-30 flex items-end gap-3 ${live ? 'left-5' : 'left-[calc(clamp(300px,26vw,400px)+40px)]'}`}>
+      <div className={`pointer-events-none absolute bottom-[calc(var(--footer-h)+16px)] z-30 flex items-end gap-3 ${live ? 'left-5' : 'left-[calc(clamp(300px,26vw,400px)+40px)]'}`}>
         {/* While the journey plays the map has no badges or pins to explain: the charts carry the colours. */}
         {!live && <Legend routeMode={routeHighlight !== null} weatherShown={showWeather && routePins.length > 0} />}
         {!live && routeHighlight !== null && routePins.length > 0 && (
@@ -613,7 +614,10 @@ export default function App() {
         />
       )}
 
-      {trendsOpen && summary && <DelayTrends summary={summary} year={year} onYear={setYear} onClose={() => setTrendsOpen(false)} />}
+      {/* Credits and partner logos: always on screen, also while presenting or playing a journey. */}
+      <Footer />
+
+      {trendsOpen && summary &&<DelayTrends summary={summary} year={year} onYear={setYear} onClose={() => setTrendsOpen(false)} />}
 
       {/* Until the first tiles arrive the basemap is flat navy, which reads as broken. */}
       <div

@@ -68,7 +68,7 @@ request):
 | Type | **Barlow** (body/UI) + **Barlow Condensed** 500/600 (`font-board`: big numbers, titles, tabular figures), self-hosted via `@fontsource`, bundled by Vite. Body ≥ 15 px, tap targets ≥ 44 px. |
 
 **Left column** (`components/SideColumn.tsx`, `clamp(300px, 26vw, 400px)`, inside the 36% padding zone):
-`PeriodSummary` (title, **year picker**, headline numbers, delay sparkline, weather list; all from
+`PeriodSummary` (title, **year picker**, headline numbers, delay sparkline; all from
 `summary.json`) → `RouteFinder` → `StationSelect`.
 Legend and "Reset view" share one bottom-left row in `App.tsx`. App owns reset: it clears the
 selection/route and bumps `resetSignal`, which `Map.tsx` answers with `flyTo(DEFAULT_VIEW)`.
@@ -399,7 +399,7 @@ never use it. Snow depth is whole cm; `-1` and `0` both mean no snow.
   never shown as a number: the figure is a small difference of two shares.
 - **Wording is descriptive, never causal.** Bad weather comes with winter nights, and the baseline
   cannot see track works inside a month. Footnotes say "what happened, not exactly why".
-- Where it shows: title card (top 3 conditions, with "more than usual in 8 of 8 years"), station
+- Where it shows: the "How delays changed" pop-up (every condition, with "more than usual in 8 of 8 years"; kept off the title card to keep the home page quiet), station
   panel, route pop-up "Delay and weather" (`ConditionList`). Data: `summary.scopes[..].conditions`,
   `stations[..].weather.conditions`, `route_stats[id].w`; each cell is `[arrivals, % late, extra]`.
 - The mean temperature and snow on pins / charts is an 8-year or one-year **average over all seasons**
@@ -588,6 +588,33 @@ buttons stay on screen; only Reset view is hidden while it plays.
   Timings and counts are in `PRESENT` (`lib/presentation.ts`, `labelAlpha`).
 - Dev only: `window.__map` is the MapLibre map (to read the camera when checking). A 1280x720 window
   keeps the browser tool responsive; the 3D map renders in software.
+
+## Footer and partner logos
+
+A dark strip along the bottom (`components/Footer.tsx`, always shown, also while presenting or
+playing a journey) holds:
+- the credit "Built by Vinicius Pozzobon Borin" with a GitHub link (`https://github.com/borinvini`);
+- a data note (Fintraffic and FMI, both CC BY 4.0, which requires credit; it shows from 1280 px
+  wide);
+- the University of Oulu, 6G Flagship and Interreg Aurora logos, each linking to its site.
+
+All three logos are one line high and share one height: 28 px, with 24 px and 18 px on smaller
+screens. The Interreg logo keeps only its top line, so the "Aurora" row is cut.
+
+The footer's height is the `--footer-h` token in `index.css`: 52 px on one row, and 76 px on two
+rows below 1024 px. The bottom row (legend and buttons), the left column's max height and MapLibre's
+attribution all keep clear of it. The camera is unchanged: at 1280×720 Helsinki was already below
+the screen edge, and at 1920×1080 it sits above the strip.
+
+- **Logos** are transparent PNGs in `web/src/assets/logos/`, made from the originals in `src/` by
+  `scripts/make_logos.py` (Pillow + numpy; use the training conda env). The script does this:
+  - it "unmixes" each pixel against the background, so the edges stay smooth;
+  - it recolours blue to white and pink/lavender to ice;
+  - it keeps the 6G gold.
+
+  Rerun it if the originals change; never edit the PNGs by hand.
+- **The EU flag keeps its real blue and yellow, with a thin white border.** EU visibility rules
+  require this on dark backgrounds, so never recolour it.
 
 ## Conventions
 
