@@ -4,7 +4,7 @@ import { defineConfig } from 'vite'
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: './', // Hostinger may serve this from a subfolder
+  base: './', // relative paths: works at the domain root and under <user>.github.io/<repo>/
   plugins: [react(), tailwindcss()],
   // maplibre-gl spawns a Web Worker to decode vector tiles off the main thread. Under Vite's
   // default dev-time dependency pre-bundling, that worker's request stalls forever (network

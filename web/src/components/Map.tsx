@@ -60,7 +60,7 @@ const EMS_LINK = {
 // `predev`/`prebuild`, see package.json) copies both files verbatim into public/maplibre/, and
 // we point at them there directly -- untouched by Vite's bundler, so the worker's relative
 // import keeps resolving against its real sibling. `import.meta.env.BASE_URL` respects the
-// `base: './'` config so this still works under a Hostinger subfolder. Must run before any
+// `base: './'` config so this still works under a subfolder. Must run before any
 // `maplibregl.Map` is constructed.
 maplibregl.setWorkerUrl(`${import.meta.env.BASE_URL}maplibre/maplibre-gl-worker.mjs`)
 

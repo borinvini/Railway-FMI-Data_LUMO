@@ -5,7 +5,7 @@
 Interactive **event demo**: a map of Finland with train routes. Selecting a route shows its
 delay behaviour and the weather conditions along it. It will be shown on a screen at an
 event to a **mixed, mostly non-technical audience**, then hosted as a **static site on
-Hostinger**.
+GitHub Pages** (see *Deploy*).
 
 Design rules that follow from that:
 
@@ -26,12 +26,12 @@ Design rules that follow from that:
 
 | Layer | Choice |
 |---|---|
-| Build | **Vite + React + TypeScript + Tailwind CSS**, `base: './'` so it works in any Hostinger subfolder |
+| Build | **Vite + React + TypeScript + Tailwind CSS**, `base: './'` so it works under any subfolder (e.g. `<user>.github.io/<repo>/`) |
 | Basemap | **MapLibre GL JS** (v4) on **OpenFreeMap** vector tiles (free, keyless, OpenMapTiles schema), **restyled in code** to the Finnish-flag "Nordic night" palette (see *Map style*). Google Maps was considered and rejected: needs an API key + billing, and the key would sit in the page. |
 | Data layers | **deck.gl** (v9) via `MapboxOverlay` (`interleaved: false`, `pickingRadius: 10`): `PathLayer` routes, `ScatterplotLayer` stations, optional `TripsLayer` attract-loop |
 | Panel charts | Chart.js (framework-agnostic; call its API directly inside a `useEffect` — no React-charting library needed) |
 | Data prep | Python 3, `fastparquet` + `pandas` (see gotchas) |
-| Hosting | Static upload of `dist/` to Hostinger (File Manager / FTP) |
+| Hosting | **GitHub Pages**, built and published by `.github/workflows/deploy.yml` on every push to `main` |
 
 deck.gl is an overlay framework, not a basemap — that is why MapLibre is used underneath.
 MapLibre and deck.gl are plain JS libraries; use them the same way inside React as in the
@@ -204,13 +204,14 @@ Railway-FMI-Data_LUMO/
                                                           is CSS-first config (@import
                                                           "tailwindcss" in src/index.css),
                                                           via the @tailwindcss/vite plugin
-  dist/                                                 build output -> upload to Hostinger
+  dist/                                                 build output (GitHub Actions publishes it)
+  .github/workflows/deploy.yml                          build + publish to GitHub Pages
 ```
 
 Note: the parquet lives in `data/raw/` (git-ignored); the scripts look there first via
 `routes_lib.find_parquets()`.
 
-**Before deploying `dist/` to Hostinger, open it in an ordinary desktop browser** (not just
+**After each deploy, open the live site in an ordinary desktop browser** (not just
 via automation tooling) and confirm the map renders — see the MapLibre worker gotcha below;
 one dev session's automated browser could not get a conclusive read on the production build
 specifically (masked/opaque Worker error, looked like a CORS/CSP artifact of that tool's own
@@ -632,7 +633,7 @@ the screen edge, and at 1920×1080 it sits above the strip.
   on any station without coordinates.
 - Keep the app dependency-light; prefer few small files over a framework. Run
   `npm run build` and open `dist/` via a static server before calling anything done.
-- Test the built site under a subpath (Hostinger may serve from a folder).
+- Test the built site under a subpath (`<user>.github.io/<repo>/` serves it from a folder).
 - All visitor-facing text in English, plain language; station names shown with proper
   Finnish characters.
 
@@ -643,9 +644,21 @@ source .venv/Scripts/activate     # always first — see "Always use a project-l
 python scripts/build_data.py      # parquet + station metadata -> web/public/data/*.json
 cd web && npm install
 npm run dev                       # local dev server
-npm run build                     # -> dist/ (upload contents to Hostinger)
+npm run build                     # -> dist/ (to check locally; the deploy builds on GitHub)
 npx vite preview                  # sanity-check the production build
+git push                          # push to main = rebuild + publish on GitHub Pages
 ```
+
+## Deploy (GitHub Pages)
+
+- Repo: `https://github.com/borinvini/Railway-FMI-Data_LUMO` (public; only `main` is pushed, the
+  other branches stay local).
+- `.github/workflows/deploy.yml` runs `npm ci` + `npm run build` in `web/` and publishes `web/dist`
+  on every push to `main`; it can also be started by hand from the Actions tab ("Run workflow").
+  The repo setting **Settings → Pages → Source = "GitHub Actions"** must stay on.
+- The build needs nothing outside git: generated JSON is committed, and `prebuild` copies the
+  MapLibre worker files from `node_modules`.
+- Temporary address: `https://borinvini.github.io/Railway-FMI-Data_LUMO/`.
 
 ## Roadmap
 
@@ -654,4 +667,4 @@ npx vite preview                  # sanity-check the production build
 3. Side panel: headline numbers, per-leg delay, delay vs. weather, causes, worst runs.
 4. Polish for the room: legend, intro overlay, attract-loop animation, reset button,
    large-screen and touch tuning.
-5. Build, test under a subpath, hand over `dist/` for Hostinger.
+5. Build, test under a subpath, publish on GitHub Pages with a custom domain.
