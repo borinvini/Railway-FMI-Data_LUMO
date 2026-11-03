@@ -1,7 +1,8 @@
 import { useEffect, useMemo } from 'react'
-import { count, periodLabel } from '../lib/period'
+import { count, periodLabel, scopeOf } from '../lib/period'
 import { MONTH_NAMES, monthTitle, seasonal, yearly } from '../lib/trends'
 import type { SummaryFile } from '../lib/types'
+import ConditionList, { CONDITION_CAVEAT, CONDITION_KEY } from './ConditionList'
 import { MonthlyLine, SeasonBars } from './DelayCharts'
 import YearChips from './YearChips'
 
@@ -62,6 +63,7 @@ export default function DelayTrends({ summary, year, onYear, onClose }: DelayTre
   }, [bySeason, byYear, summary, year])
 
   const label = periodLabel(summary.years, null)
+  const conditions = summary.scopes[scopeOf(year)]?.conditions ?? null
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[rgba(2,6,13,0.55)] p-4" onClick={onClose}>
@@ -107,6 +109,15 @@ export default function DelayTrends({ summary, year, onYear, onClose }: DelayTre
         {takeaways.map((line) => (
           <p key={line} className="m-0 mt-2 text-[15px] text-(--card-ink)">{line}</p>
         ))}
+
+        {conditions && (
+          <>
+            <h3 className="font-board mt-6 mb-1 text-[22px] font-semibold">Late trains in bad weather</h3>
+            <ConditionList defs={summary.conditions} cells={conditions} yearsAbove={year === null ? summary.yearsAbove : null} />
+            <p className="m-0 mt-1.5 text-sm text-(--card-ink-3)">{CONDITION_KEY}</p>
+            <p className="m-0 mt-1 text-sm text-(--card-ink-3)">{CONDITION_CAVEAT}</p>
+          </>
+        )}
 
         <p className="m-0 mt-4 text-sm text-(--card-ink-3)">
           Delay is the minutes late at each arrival (early arrivals count as 0), averaged over{' '}

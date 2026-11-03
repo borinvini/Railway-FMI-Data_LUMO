@@ -1,6 +1,5 @@
 import { count, periodLabel, scopeOf } from '../lib/period'
 import type { SummaryFile } from '../lib/types'
-import ConditionList, { CONDITION_KEY } from './ConditionList'
 import { Sparkline } from './DelayCharts'
 import FinnishFlag from './FinnishFlag'
 import YearChips from './YearChips'
@@ -17,9 +16,9 @@ interface PeriodSummaryProps {
 /**
  * Title card at the top of the left column: what this page is, a year picker (every number and
  * colour on the page follows it), the period's two headline numbers (set like a departure
- * board), a small month-by-month delay line that opens the full charts, and how many more trains
- * ran late in bad weather than is usual at the same station and time of year (see
- * routes_lib.CONDITIONS). Numbers come from summary.json; until it loads the card shows the title.
+ * board) and a small month-by-month delay line that opens the full charts (which also hold the
+ * late-trains-in-bad-weather figures). Numbers come from summary.json; until it loads the card
+ * shows the title.
  */
 export default function PeriodSummary({ summary, year, onYear, onOpenTrends }: PeriodSummaryProps) {
   const headline = summary?.scopes[scopeOf(year)] ?? null
@@ -65,23 +64,10 @@ export default function PeriodSummary({ summary, year, onYear, onOpenTrends }: P
             >
               <Sparkline months={summary.months} avg={summary.trend.avg} year={year} />
               <span className="mt-1.5 flex min-h-11 items-center justify-between text-[15px] text-(--card-ink-2)">
-                <span>How delays changed, month by month</span>
+                <span>How delays changed, and the weather</span>
                 <span aria-hidden="true" className="text-lg">→</span>
               </span>
             </button>
-          )}
-
-          {summary && headline.conditions && (
-            <div className="mt-2 border-t border-(--card-line) pt-3">
-              <p className="m-0 mb-1 text-[15px] font-medium text-(--card-ink)">Late trains in bad weather</p>
-              <ConditionList
-                defs={summary.conditions}
-                cells={headline.conditions}
-                limit={3}
-                yearsAbove={year === null ? summary.yearsAbove : null}
-              />
-              <p className="m-0 mt-1.5 text-sm text-(--card-ink-3)">{CONDITION_KEY}</p>
-            </div>
           )}
         </>
       )}
