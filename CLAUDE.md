@@ -658,7 +658,18 @@ git push                          # push to main = rebuild + publish on GitHub P
   The repo setting **Settings → Pages → Source = "GitHub Actions"** must stay on.
 - The build needs nothing outside git: generated JSON is committed, and `prebuild` copies the
   MapLibre worker files from `node_modules`.
-- Temporary address: `https://borinvini.github.io/Railway-FMI-Data_LUMO/`.
+- **Live at `https://finlandtrains.eu`.** The old `borinvini.github.io/Railway-FMI-Data_LUMO/`
+  address and `www.finlandtrains.eu` both forward there.
+- **The domain:** bought at **Porkbun** (`.eu`, which Cloudflare doesn't sell), and its DNS is managed
+  at Porkbun too. The records:
+  - 4 × A for the bare domain: `185.199.108.153`, `.109.153`, `.110.153` and `.111.153`;
+  - a CNAME `www` → `borinvini.github.io`;
+  - a TXT `_github-pages-challenge-borinvini`, which verifies the domain for the borinvini account
+    and protects it against takeover.
+
+  Porkbun's default parking records (ALIAS and `*` CNAME to `pixie.porkbun.com`) were deleted.
+- **The custom domain is set only in the repo's Settings → Pages → Custom domain** (and Enforce
+  HTTPS is ticked there). Don't add a `CNAME` file: with an Actions workflow, GitHub ignores it.
 
 ## Roadmap
 
