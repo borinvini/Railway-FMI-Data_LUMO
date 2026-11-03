@@ -617,6 +617,18 @@ the screen edge, and at 1920×1080 it sits above the strip.
 - **The EU flag keeps its real blue and yellow, with a thin white border.** EU visibility rules
   require this on dark backgrounds, so never recolour it.
 
+## Site icon
+
+`web/public/favicon.svg` is the icon: a white train side view with the Finnish flag on the rear car
+(a navy edge separates the flag's white from the body), on a navy rounded tile with an ice edge.
+
+- It is hand-drawn on a 64×64 grid. Of the three versions drawn, this one was picked because it is
+  the clearest at 16 px.
+- `favicon-32.png` (a fallback for browsers without SVG icons) and `apple-touch-icon.png` (180 px,
+  a full navy square, because iOS rounds the corners itself) are rendered from that SVG. If the SVG
+  changes, re-render them with Playwright or any SVG-to-PNG tool.
+- `index.html` links all three and sets `theme-color` to `#06101f`.
+
 ## Conventions
 
 - `scripts/routes_lib.py` is the **only** module that reads the parquet (fastparquet,
