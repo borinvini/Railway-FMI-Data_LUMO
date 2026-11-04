@@ -1,4 +1,5 @@
 import { forwardRef } from 'react'
+import { useLang } from '../../i18n'
 
 interface RoutePeekProps {
   startName: string
@@ -14,6 +15,7 @@ interface RoutePeekProps {
 /** Phone layout: once a route is found the route sheet drops to this bar, so the route and its
  *  badges are visible on the map. The names reopen the sheet; Details and Play act directly. */
 const RoutePeek = forwardRef<HTMLDivElement, RoutePeekProps>(function RoutePeek({ startName, endName, paths, bottom, onExpand, onDetails, onPlay }, ref) {
+  const { t } = useLang()
   return (
     <div
       ref={ref}
@@ -23,7 +25,7 @@ const RoutePeek = forwardRef<HTMLDivElement, RoutePeekProps>(function RoutePeek(
       <button
         type="button"
         onClick={onExpand}
-        aria-label="Show the route finder"
+        aria-label={t.phone.showFinder}
         className="flex min-h-11 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left"
       >
         <span className="font-board min-w-0 flex-1 truncate text-[21px] leading-tight font-semibold">
@@ -39,7 +41,7 @@ const RoutePeek = forwardRef<HTMLDivElement, RoutePeekProps>(function RoutePeek(
           onClick={onDetails}
           className="flex min-h-11 cursor-pointer items-center justify-center rounded-lg bg-(--card-ink) text-[15px] font-medium text-white"
         >
-          {paths > 1 ? `Details (${paths} ways)` : 'Details'}
+          {t.phone.details(paths)}
         </button>
         <button
           type="button"
@@ -47,7 +49,7 @@ const RoutePeek = forwardRef<HTMLDivElement, RoutePeekProps>(function RoutePeek(
           className="flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg border border-[rgba(0,47,108,0.25)] text-[15px] text-(--card-ink-2)"
         >
           <span className="h-2.5 w-2.5 rounded-full bg-current" aria-hidden="true" />
-          Play the journey
+          {t.finder.play}
         </button>
       </div>
     </div>

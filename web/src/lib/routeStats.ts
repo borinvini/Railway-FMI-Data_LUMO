@@ -38,7 +38,8 @@ export interface RouteSummary {
   stops: StopPoint[]
   /** Services on this route that have no saved statistics (should be none). */
   missingServices: number
-  insights: string[]
+  /** Where along the route delay shows up; the pop-up words it (en.ts route.insightJump / insightLatest). */
+  insights: StopInsights
   /** Weather conditions pooled over the route's services (arrivals, % late, extra late per 100 than
    *  usual); a condition with no service reporting it is absent. */
   weather: Conditions
@@ -154,13 +155,18 @@ function poolConditions(all: (Conditions | null)[]): Conditions {
   return out
 }
 
-const min1 = (v: number) => `${v.toFixed(1)} min`
+export interface StopInsights {
+  /** The biggest step up in delay between two neighbouring stops (only when at least 0.5 min). */
+  jump: { from: string; to: string; by: number } | null
+  /** The stop where trains run latest. */
+  latest: { name: string; avg: number } | null
+}
 
-/** One or two plain-language sentences about where along the route delay shows up. */
-function stopInsights(stops: StopPoint[]): string[] {
+/** Where along the route delay shows up: the biggest jump and the latest-running stop. */
+function stopInsights(stops: StopPoint[]): StopInsights {
+  const out: StopInsights = { jump: null, latest: null }
   const valued = stops.filter((s) => s.avg !== null) as (StopPoint & { avg: number })[]
-  if (valued.length < 2) return []
-  const out: string[] = []
+  if (valued.length < 2) return out
 
   // Only compare neighbouring stops that both have data -- a jump across a gap of stops with no
   // figures would wrongly look like one big step.
@@ -172,12 +178,10 @@ function stopInsights(stops: StopPoint[]): string[] {
     const by = b - a
     if (!bestJump || by > bestJump.by) bestJump = { from: stops[i - 1], to: stops[i], by }
   }
-  if (bestJump && bestJump.by >= 0.5) {
-    out.push(`Delay grows most between ${bestJump.from.name} and ${bestJump.to.name} (+${min1(bestJump.by)}).`)
-  }
+  if (bestJump && bestJump.by >= 0.5) out.jump = { from: bestJump.from.name, to: bestJump.to.name, by: bestJump.by }
 
   const latest = valued.reduce((a, b) => (b.avg > a.avg ? b : a))
-  out.push(`Latest-running stop: ${latest.name}, ${min1(latest.avg)} late on average.`)
+  out.latest = { name: latest.name, avg: latest.avg }
   return out
 }
 
@@ -191,13 +195,13 @@ export interface StationInfo {
 const VIA_MIN_KM = 60
 
 /**
- * Short plain-language name for a route: its two busiest stops that are well away from both ends
- * (so Helsinki's own suburbs don't win), kept in travel order -- "via Tampere, Seinäjoki" --
- * or "direct" when there are no stops in between.
+ * What names a route: its two busiest stops that are well away from both ends (so Helsinki's own
+ * suburbs don't win), kept in travel order -- shown as "via Tampere, Seinäjoki". Empty when there
+ * are no stops in between ("direct").
  */
-export function viaLabel(path: RoutePath, info: Map<string, StationInfo>): string {
+export function viaStops(path: RoutePath, info: Map<string, StationInfo>): string[] {
   const interior = path.stops.slice(1, -1).filter((c) => info.has(c))
-  if (interior.length === 0) return 'direct'
+  if (interior.length === 0) return []
   const start = info.get(path.stops[0])
   const end = info.get(path.stops[path.stops.length - 1])
   const far = interior.filter((c) => {
@@ -206,7 +210,7 @@ export function viaLabel(path: RoutePath, info: Map<string, StationInfo>): strin
   })
   const pool = far.length > 0 ? far : interior
   const top = [...pool].sort((a, b) => info.get(b)!.runs - info.get(a)!.runs).slice(0, 2)
-  return `via ${interior.filter((c) => top.includes(c)).map((c) => info.get(c)!.name).join(', ')}`
+  return interior.filter((c) => top.includes(c)).map((c) => info.get(c)!.name)
 }
 
 /** A station's typical delay for the map badges. `own` = from this route's own trains; otherwise

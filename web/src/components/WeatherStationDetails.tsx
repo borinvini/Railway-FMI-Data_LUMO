@@ -1,7 +1,6 @@
 import { BarController, BarElement, CategoryScale, Chart, LinearScale, Tooltip } from 'chart.js'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { count } from '../lib/period'
-import { MONTH_SHORT, monthTitle } from '../lib/trends'
+import { useLang } from '../i18n'
 import type { EmsStationFile, StationEms } from '../lib/types'
 
 Chart.register(BarController, BarElement, CategoryScale, LinearScale, Tooltip)
@@ -30,15 +29,6 @@ interface WeatherStationDetailsProps {
   onClose: () => void
 }
 
-const shortDate = (iso: string) =>
-  new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
-
-// A real minus sign, and no "-0": a mean of -0.4 reads "0°C".
-const degrees = (t: number) => {
-  const r = Math.round(t)
-  return `${r < 0 ? '−' : ''}${Math.abs(r)}°C`
-}
-
 type View = 'temp' | 'snow' | 'wind'
 
 /**
@@ -49,6 +39,10 @@ type View = 'temp' | 'snow' | 'wind'
  * as RouteDetails. One chart at a time, one bar per month, switched by tabs, so the pop-up stays short.
  */
 export default function WeatherStationDetails({ ems, stationName, file, scope, period, loadFailed, routeNote, onClose }: WeatherStationDetailsProps) {
+  const { t, f } = useLang()
+  const w = t.weather
+  const shortDate = f.date
+  const degrees = f.temp
   const [view, setView] = useState<View>('temp')
   const weather = file?.scopes[scope] ?? null
 
@@ -83,9 +77,9 @@ export default function WeatherStationDetails({ ems, stationName, file, scope, p
   const hasWind = gustMonthly.some((v) => v !== null)
   // A tab only appears when it has something to draw; fall back to temperature otherwise.
   const tabs: { id: View; label: string }[] = [
-    { id: 'temp', label: 'Temperature' },
-    ...(hasSnow ? [{ id: 'snow' as const, label: 'Snow' }] : []),
-    ...(hasWind ? [{ id: 'wind' as const, label: 'Wind' }] : []),
+    { id: 'temp', label: w.tabs.temp },
+    ...(hasSnow ? [{ id: 'snow' as const, label: w.tabs.snow }] : []),
+    ...(hasWind ? [{ id: 'wind' as const, label: w.tabs.wind }] : []),
   ]
   const shown: View = tabs.some((t) => t.id === view) ? view : 'temp'
 
@@ -101,81 +95,69 @@ export default function WeatherStationDetails({ ems, stationName, file, scope, p
         <button
           type="button"
           onClick={onClose}
-          aria-label="Close"
+          aria-label={t.close}
           className="absolute top-2 right-2 flex h-11 w-11 cursor-pointer items-center justify-center text-lg text-(--card-ink-3) hover:text-(--card-ink) max-md:fixed max-md:top-[calc(6px+env(safe-area-inset-top))] max-md:right-2 max-md:z-10 max-md:rounded-full max-md:bg-(--card) max-md:text-(--card-ink) max-md:shadow-[0_2px_10px_rgba(0,0,0,0.25)]"
         >
           ✕
         </button>
 
         <h2 id="weather-station-title" className="font-board m-0 pr-10 text-[32px] leading-tight font-semibold">
-          {ems.name} weather station
+          {w.title(ems.name)}
         </h2>
-        <p className="m-0 mt-0.5 text-[15px] text-(--card-ink-2)">
-          {ems.km.toFixed(1)} km from {stationName}. {period}, at the times trains were nearby.
-        </p>
+        <p className="m-0 mt-0.5 text-[15px] text-(--card-ink-2)">{w.intro(ems.km, stationName, period)}</p>
         {routeNote && <p className="m-0 mt-1 text-[15px] font-medium text-(--card-ink)">{routeNote}</p>}
-        {ems.closest && (
-          <p className="m-0 mt-1 text-[15px] text-(--card-ink-2)">
-            A closer station, {ems.closest.name}
-            {ems.closest.km !== null && ` (${ems.closest.km.toFixed(1)} km)`}, has no train readings in the data, so
-            this one is used.
-          </p>
-        )}
+        {ems.closest && <p className="m-0 mt-1 text-[15px] text-(--card-ink-2)">{w.closer(ems.closest.name, ems.closest.km)}</p>}
 
         {!file && (
-          <p className="mt-6 mb-2 text-[15px] text-(--card-ink-2)">
-            {loadFailed ? 'Could not load the weather. Please try again.' : 'Loading the weather…'}
-          </p>
+          <p className="mt-6 mb-2 text-[15px] text-(--card-ink-2)">{loadFailed ? w.failed : w.loading}</p>
         )}
 
         {file && !weather && (
-          <p className="mt-6 mb-2 text-[15px] text-(--card-ink-2)">No train readings at this weather station {period === 'all years' ? 'at all' : `in ${period}`}.</p>
+          <p className="mt-6 mb-2 text-[15px] text-(--card-ink-2)">{w.none(period === t.allYears ? null : period)}</p>
         )}
 
         {weather && !enough && (
-          <p className="mt-6 mb-2 text-[15px] text-(--card-ink-2)">
-            Too few train readings to summarise {period}: {count(weather.readings)} in total.
-          </p>
+          <p className="mt-6 mb-2 text-[15px] text-(--card-ink-2)">{w.tooFew(period, weather.readings)}</p>
         )}
 
         {weather && enough && (
           <>
             <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <Tile label="Average temperature" value={weather.temp.avg === null ? 'No reading' : degrees(weather.temp.avg)} />
+              <Tile label={w.avgTemp} value={weather.temp.avg === null ? w.noReading : degrees(weather.temp.avg)} />
               <Tile
-                label="Coldest"
-                value={weather.temp.min === null ? 'No reading' : degrees(weather.temp.min)}
+                label={w.coldest}
+                value={weather.temp.min === null ? w.noReading : degrees(weather.temp.min)}
                 note={weather.temp.minAt ? shortDate(weather.temp.minAt) : undefined}
               />
               <Tile
-                label="Warmest"
-                value={weather.temp.max === null ? 'No reading' : degrees(weather.temp.max)}
+                label={w.warmest}
+                value={weather.temp.max === null ? w.noReading : degrees(weather.temp.max)}
                 note={weather.temp.maxAt ? shortDate(weather.temp.maxAt) : undefined}
               />
               <Tile
-                label="Deepest snow"
-                value={weather.snow.max === null ? 'No reading' : weather.snow.max <= 0 ? 'No snow' : `${weather.snow.max.toFixed(0)} cm`}
+                label={w.deepestSnow}
+                value={weather.snow.max === null ? w.noReading : weather.snow.max <= 0 ? w.noSnow : `${f.dec(weather.snow.max, 0)} cm`}
                 note={weather.snow.maxAt ? shortDate(weather.snow.maxAt) : undefined}
               />
               <Tile
-                label="Strongest gust of wind"
-                value={weather.gust.max === null ? 'No reading' : `${weather.gust.max.toFixed(0)} m/s`}
-                note={weather.gust.max === null ? undefined : `${(weather.gust.max * 3.6).toFixed(0)} km/h${weather.gust.maxAt ? `, ${shortDate(weather.gust.maxAt)}` : ''}`}
+                label={w.strongestGust}
+                value={weather.gust.max === null ? w.noReading : `${f.dec(weather.gust.max, 0)} m/s`}
+                note={weather.gust.max === null ? undefined : `${f.dec(weather.gust.max * 3.6, 0)} km/h${weather.gust.maxAt ? `, ${shortDate(weather.gust.maxAt)}` : ''}`}
               />
               <Tile
-                label="Worst visibility"
+                label={w.worstVisibility}
                 value={
                   weather.visibility.min === null
-                    ? 'No reading'
+                    ? w.noReading
                     : weather.visibility.min < 1000
-                      ? `${weather.visibility.min.toFixed(0)} m`
-                      : `${(weather.visibility.min / 1000).toFixed(1)} km`
+                      ? `${f.dec(weather.visibility.min, 0)} m`
+                      : `${f.dec(weather.visibility.min / 1000, 1)} km`
                 }
                 note={weather.visibility.minAt ? shortDate(weather.visibility.minAt) : undefined}
               />
             </div>
 
-            <div role="tablist" aria-label="Weather by month" className="mt-6 flex flex-wrap gap-2">
+            <div role="tablist" aria-label={w.tabsAria} className="mt-6 flex flex-wrap gap-2">
               {tabs.map((t) => (
                 <button
                   key={t.id}
@@ -196,17 +178,15 @@ export default function WeatherStationDetails({ ems, stationName, file, scope, p
 
             {shown === 'temp' && (
               <>
-                <p className="m-0 mt-3 mb-2 text-[15px] text-(--card-ink-2)">
-                  Each bar runs from the coldest to the warmest reading in that month. Months with no bar had no readings.
-                </p>
+                <p className="m-0 mt-3 mb-2 text-[15px] text-(--card-ink-2)">{w.tempIntro}</p>
                 <MonthChart
                   months={months}
                   values={tempRanges}
-                  yTitle="Air temperature (°C)"
-                  ariaLabel="Bar chart of the coldest and warmest temperature reading in each month"
+                  yTitle={w.tempAxis}
+                  ariaLabel={w.tempAria}
                   tooltip={(i) => {
                     const d = file!.monthly.temp[shownMonths[i].i]
-                    return d ? `${degrees(d[0])} to ${degrees(d[2])}, average ${degrees(d[1])}` : 'No readings'
+                    return d ? w.tempTip(d[0], d[1], d[2]) : w.noReadings
                   }}
                 />
               </>
@@ -214,21 +194,16 @@ export default function WeatherStationDetails({ ems, stationName, file, scope, p
 
             {shown === 'snow' && (
               <>
-                <p className="m-0 mt-3 mb-2 text-[15px] text-(--card-ink-2)">
-                  The deepest snow measured in each month.
-                  {weather.snow.daysWithSnow > 0
-                    ? ` Snow lay on the ground on ${count(weather.snow.daysWithSnow)} of the ${count(weather.days)} days with readings.`
-                    : ' There was no snow on the ground at any reading.'}
-                </p>
+                <p className="m-0 mt-3 mb-2 text-[15px] text-(--card-ink-2)">{w.snowIntro(weather.snow.daysWithSnow, weather.days)}</p>
                 <MonthChart
                   months={months}
                   values={snowMonthly}
-                  yTitle="Snow on the ground (cm)"
+                  yTitle={w.snowAxis}
                   beginAtZero
-                  ariaLabel="Bar chart of the deepest snow measured in each month"
+                  ariaLabel={w.snowAria}
                   tooltip={(i) => {
                     const v = snowMonthly[i]
-                    return v === null ? 'No readings' : v <= 0 ? 'No snow' : `${v.toFixed(0)} cm of snow`
+                    return v === null ? w.noReadings : v <= 0 ? w.noSnow : w.snowTip(v)
                   }}
                 />
               </>
@@ -236,28 +211,23 @@ export default function WeatherStationDetails({ ems, stationName, file, scope, p
 
             {shown === 'wind' && (
               <>
-                <p className="m-0 mt-3 mb-2 text-[15px] text-(--card-ink-2)">
-                  The strongest gust of wind measured in each month, in metres per second (1 m/s is 3.6 km/h).
-                </p>
+                <p className="m-0 mt-3 mb-2 text-[15px] text-(--card-ink-2)">{w.windIntro}</p>
                 <MonthChart
                   months={months}
                   values={gustMonthly}
-                  yTitle="Strongest gust (m/s)"
+                  yTitle={w.windAxis}
                   beginAtZero
-                  ariaLabel="Bar chart of the strongest gust of wind measured in each month"
+                  ariaLabel={w.windAria}
                   tooltip={(i) => {
                     const v = gustMonthly[i]
-                    return v === null ? 'No readings' : `${v.toFixed(0)} m/s (${(v * 3.6).toFixed(0)} km/h)`
+                    return v === null ? w.noReadings : w.windTip(v)
                   }}
                 />
               </>
             )}
 
             <p className="m-0 mt-4 text-sm text-(--card-ink-3)">
-              Based on {count(weather.readings)} readings
-              {weather.slotShare !== null && ` (${Math.round(weather.slotShare * 100)}% of the 10-minute slots in ${period})`},
-              taken when trains were nearby. Highs and lows are from those times, so a cold night with no trains is not
-              in them. If this station does not measure something, the data takes it from the next closest one.
+              {w.footnote(weather.readings, weather.slotShare === null ? null : Math.round(weather.slotShare * 100), period)}
             </p>
           </>
         )}
@@ -291,6 +261,7 @@ interface MonthChartProps {
 /** One bar per month (Chart.js called directly, like the rest of the charts); a month with no
  *  readings is a gap, not a zero. Over several years the axis names the years, not every month. */
 function MonthChart({ months, values, yTitle, ariaLabel, tooltip, beginAtZero }: MonthChartProps) {
+  const { f } = useLang()
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -314,12 +285,13 @@ function MonthChart({ months, values, yTitle, ariaLabel, tooltip, beginAtZero }:
         responsive: true,
         maintainAspectRatio: false,
         animation: { duration: 250 },
+        locale: f.chartLocale,
         plugins: {
           legend: { display: false },
           tooltip: {
             backgroundColor: 'rgba(6,16,31,0.92)',
             callbacks: {
-              title: (items) => monthTitle(months[items[0].dataIndex]),
+              title: (items) => f.monthTitle(months[items[0].dataIndex]),
               label: (ctx) => tooltip(ctx.dataIndex),
             },
           },
@@ -331,7 +303,7 @@ function MonthChart({ months, values, yTitle, ariaLabel, tooltip, beginAtZero }:
               color: INK, font: { size: 13, family: FONT }, autoSkip: false, maxRotation: 0,
               // A label at each January (the year) over several years; the month name for one year.
               callback: (_v, i) =>
-                multiYear ? (months[i].endsWith('-01') ? months[i].slice(0, 4) : '') : MONTH_SHORT[Number(months[i].slice(5, 7)) - 1],
+                multiYear ? (months[i].endsWith('-01') ? months[i].slice(0, 4) : '') : f.monthsShort[Number(months[i].slice(5, 7)) - 1],
             },
           },
           y: {
@@ -346,7 +318,7 @@ function MonthChart({ months, values, yTitle, ariaLabel, tooltip, beginAtZero }:
     return () => chart.destroy()
     // `tooltip` is rebuilt every render; the data it reads is what `values` already tracks.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [months, values, yTitle, beginAtZero])
+  }, [months, values, yTitle, beginAtZero, f])
 
   return (
     <div className="relative h-[240px]">

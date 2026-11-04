@@ -1,4 +1,5 @@
 import { forwardRef, useRef, useState, type ReactNode } from 'react'
+import { useLang } from '../../i18n'
 
 interface SheetProps {
   open: boolean
@@ -22,6 +23,7 @@ interface SheetProps {
  * the cards inside it of their own frame.
  */
 const Sheet = forwardRef<HTMLDivElement, SheetProps>(function Sheet({ open, label, onClose, bottom, maxHeight, top, children }, ref) {
+  const { t } = useLang()
   const [typing, setTyping] = useState(false)
   const [drag, setDrag] = useState(0)
   const startY = useRef<number | null>(null)
@@ -68,7 +70,7 @@ const Sheet = forwardRef<HTMLDivElement, SheetProps>(function Sheet({ open, labe
           type="button"
           onClick={onClose}
           onPointerDown={(e) => e.stopPropagation()}
-          aria-label={`Hide ${label.toLowerCase()}`}
+          aria-label={t.phone.hideSheet(label)}
           className="absolute top-0 right-1 flex h-11 w-11 cursor-pointer items-center justify-center text-(--card-ink-2)"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden="true">

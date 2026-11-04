@@ -2,7 +2,7 @@ import {
   BarController, BarElement, CategoryScale, Chart, LineController, LineElement, LinearScale, PointElement, Tooltip,
 } from 'chart.js'
 import { useEffect, useRef } from 'react'
-import { MONTH_NAMES, MONTH_SHORT, monthTitle } from '../lib/trends'
+import { useLang } from '../i18n'
 
 Chart.register(BarController, BarElement, CategoryScale, LinearScale, LineController, LineElement, PointElement, Tooltip)
 
@@ -42,6 +42,7 @@ interface MonthlyLineProps {
 
 /** The delay of every month as one line. Chart.js is called directly, like the other charts. */
 export function MonthlyLine({ months, avg, year, ariaLabel, height = 220 }: MonthlyLineProps) {
+  const { t, f } = useLang()
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -68,14 +69,15 @@ export function MonthlyLine({ months, avg, year, ariaLabel, height = 220 }: Mont
         responsive: true,
         maintainAspectRatio: false,
         animation: { duration: 250 },
+        locale: f.chartLocale,
         interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: { display: false },
           tooltip: {
             backgroundColor: 'rgba(6,16,31,0.92)',
             callbacks: {
-              title: (items) => monthTitle(months[items[0].dataIndex]),
-              label: (ctx) => (ctx.parsed.y === null ? 'No trains' : `${ctx.parsed.y.toFixed(1)} min late on average`),
+              title: (items) => f.monthTitle(months[items[0].dataIndex]),
+              label: (ctx) => (ctx.parsed.y === null ? t.charts.noTrains : t.charts.lateAvg(ctx.parsed.y)),
             },
           },
         },
@@ -86,20 +88,20 @@ export function MonthlyLine({ months, avg, year, ariaLabel, height = 220 }: Mont
               autoSkip: false, maxRotation: 0, color: INK, font: { size: 13, family: FONT },
               // A label at each January (the year); for a single year, a short month name instead.
               callback: (_v, i) =>
-                multiYear ? (months[i].endsWith('-01') ? months[i].slice(0, 4) : '') : MONTH_SHORT[Number(months[i].slice(5, 7)) - 1],
+                multiYear ? (months[i].endsWith('-01') ? months[i].slice(0, 4) : '') : f.monthsShort[Number(months[i].slice(5, 7)) - 1],
             },
           },
           y: {
             beginAtZero: true,
             grid: { color: GRID },
             ticks: { color: INK, font: { size: 13, family: FONT } },
-            title: { display: true, text: 'Minutes late', color: SOFT },
+            title: { display: true, text: t.charts.minutesLate, color: SOFT },
           },
         },
       },
     })
     return () => chart.destroy()
-  }, [months, avg, year])
+  }, [months, avg, year, t, f])
 
   return (
     <div className="relative" style={{ height }}>
@@ -118,6 +120,7 @@ interface SeasonBarsProps {
 /** Twelve bars, one per calendar month: when in the year trains run later. The four latest months
  *  are picked out in a red scale (5.0 min = light red, 13.8 min = crimson); below 5.0 min, and all other months, stay blue. */
 export function SeasonBars({ avg, ariaLabel, height = 200 }: SeasonBarsProps) {
+  const { t, f } = useLang()
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -136,7 +139,7 @@ export function SeasonBars({ avg, ariaLabel, height = 200 }: SeasonBarsProps) {
     const chart = new Chart(canvas, {
       type: 'bar',
       data: {
-        labels: MONTH_SHORT,
+        labels: f.monthsShort,
         datasets: [{
           data: avg,
           backgroundColor: colors,
@@ -150,13 +153,14 @@ export function SeasonBars({ avg, ariaLabel, height = 200 }: SeasonBarsProps) {
         responsive: true,
         maintainAspectRatio: false,
         animation: { duration: 250 },
+        locale: f.chartLocale,
         plugins: {
           legend: { display: false },
           tooltip: {
             backgroundColor: 'rgba(6,16,31,0.92)',
             callbacks: {
-              title: (items) => MONTH_NAMES[items[0].dataIndex],
-              label: (ctx) => (ctx.parsed.y === null ? 'No trains' : `${ctx.parsed.y.toFixed(1)} min late on average`),
+              title: (items) => f.months[items[0].dataIndex],
+              label: (ctx) => (ctx.parsed.y === null ? t.charts.noTrains : t.charts.lateAvg(ctx.parsed.y)),
             },
           },
         },
@@ -166,13 +170,13 @@ export function SeasonBars({ avg, ariaLabel, height = 200 }: SeasonBarsProps) {
             beginAtZero: true,
             grid: { color: GRID },
             ticks: { color: INK, font: { size: 13, family: FONT } },
-            title: { display: true, text: 'Minutes late', color: SOFT },
+            title: { display: true, text: t.charts.minutesLate, color: SOFT },
           },
         },
       },
     })
     return () => chart.destroy()
-  }, [avg])
+  }, [avg, t, f])
 
   return (
     <div className="relative" style={{ height }}>

@@ -60,12 +60,3 @@ export function yearly(months: string[], series: Series): { year: number; avg: n
   })
   return [...acc].map(([year, { sum, total }]) => ({ year, avg: sum / total, n: total })).sort((a, b) => a.year - b.year)
 }
-
-export const MONTH_NAMES = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-]
-export const MONTH_SHORT = MONTH_NAMES.map((m) => m.slice(0, 3))
-
-/** "March 2020" for "2020-03". */
-export const monthTitle = (m: string): string => `${MONTH_NAMES[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`

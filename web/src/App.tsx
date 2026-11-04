@@ -29,8 +29,8 @@ import { PRESENT } from './lib/presentation'
 import { buildLiveRoute, buildTimeline, type LiveTimeline } from './lib/liveTrain'
 import { buildDelayProfile, buildLiveProfile } from './lib/liveProfile'
 import { routeStationValues, routeWeatherPins, summarizeRoute, type StationValue } from './lib/routeStats'
-import { formatSnow, formatTemp } from './lib/weatherFormat'
 import { periodLabel, scopeOf } from './lib/period'
+import { useLang } from './i18n'
 import type { ConnectionFeature, EmsStationFile, FinlandGeoJSON, PredictorFile, RoutePattern, RouteStatsFile, RouteTrendsFile, StationFeature, StationStats, SummaryFile, WeatherPin } from './lib/types'
 
 const NO_VALUES = new Map<string, StationValue>()
@@ -38,6 +38,7 @@ const NO_VALUES = new Map<string, StationValue>()
 const IDLE_RESET_MS = 90_000
 
 export default function App() {
+  const { t, setLang } = useLang()
   // The stations of the whole period (stations.json); `stations` below swaps in a picked year's figures.
   const [baseStations, setBaseStations] = useState<StationFeature[]>([])
   const [connections, setConnections] = useState<ConnectionFeature[]>([])
@@ -119,7 +120,7 @@ export default function App() {
 
   const scope = scopeOf(year)
   const yearIndex = year === null || !summary ? null : summary.years.indexOf(year)
-  const period = periodLabel(summary?.years ?? null, year)
+  const period = periodLabel(summary?.years ?? null, year) ?? t.allYears
 
   // A picked year's station figures load once; until they arrive the whole-period figures stay.
   useEffect(() => {
@@ -415,9 +416,10 @@ export default function App() {
     setResetSignal((n) => n + 1)
   }, [])
 
-  // Unattended kiosk: after IDLE_RESET_MS without a touch, mouse move or key press, go home.
-  const resetAllRef = useRef(resetAll)
-  resetAllRef.current = resetAll
+  // Unattended kiosk: after IDLE_RESET_MS without a touch, mouse move or key press, go home, and back
+  // to English (the next visitor starts from the same screen). Reset view keeps the language.
+  const resetAllRef = useRef(() => { resetAll(); setLang('en') })
+  resetAllRef.current = () => { resetAll(); setLang('en') }
   // A Live run has no input for a minute: that is not an absent visitor.
   const liveRef = useRef(live)
   liveRef.current = live
@@ -578,15 +580,15 @@ export default function App() {
           {!live && (
             <>
               <PhoneTopBar ref={topRef} period={period} onPeriod={() => setSheet('overview')} showReset={showReset} onReset={resetAll} />
-              <Sheet ref={routeSheetRef} open={sheet === 'route'} label="Find a route" onClose={() => setSheet(null)} bottom={dockH} top={topH} maxHeight="68dvh">
+              <Sheet ref={routeSheetRef} open={sheet === 'route'} label={t.phone.sheetRoute} onClose={() => setSheet(null)} bottom={dockH} top={topH} maxHeight="68dvh">
                 {routeFinder}
               </Sheet>
-              <Sheet ref={stationSheetRef} open={sheet === 'station'} label="Station" onClose={() => setSheet(null)} bottom={dockH} top={topH} maxHeight="56dvh">
+              <Sheet ref={stationSheetRef} open={sheet === 'station'} label={t.phone.sheetStation} onClose={() => setSheet(null)} bottom={dockH} top={topH} maxHeight="56dvh">
                 <StationSelect stations={stations} selected={selected} onSelect={setSelected} />
                 {stationPanel && <div className="relative mt-3 border-t border-(--card-line) pt-3">{stationPanel}</div>}
               </Sheet>
-              <Sheet ref={overviewSheetRef} open={sheet === 'overview'} label="Overview" onClose={() => setSheet(null)} bottom={dockH} top={topH} maxHeight="76dvh">
-                <PeriodSummary summary={summary} year={year} onYear={setYear} onOpenTrends={() => setTrendsOpen(true)} />
+              <Sheet ref={overviewSheetRef} open={sheet === 'overview'} label={t.phone.sheetOverview} onClose={() => setSheet(null)} bottom={dockH} top={topH} maxHeight="76dvh">
+                <PeriodSummary summary={summary} year={year} onYear={setYear} onOpenTrends={() => setTrendsOpen(true)} langSwitch={false} />
                 <Footer embedded />
               </Sheet>
               {showPeek && routeStart && routeEnd && routeResult && (
@@ -655,7 +657,7 @@ export default function App() {
             aria-pressed={showWeather}
             className="pointer-events-auto flex min-h-11 items-center gap-2 rounded-[10px] border border-(--line) bg-(--surface) px-4 text-[15px] text-(--muted) backdrop-blur-[8px] hover:text-(--text)"
           >
-            {showWeather ? 'Hide weather stations' : 'Show weather stations'}
+            {showWeather ? t.shell.hideWeather : t.shell.showWeather}
           </button>
         )}
         {(!live || presenting) && (
@@ -673,7 +675,7 @@ export default function App() {
             <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4" aria-hidden="true">
               {presenting ? <rect x="6" y="6" width="12" height="12" rx="1.5" /> : <path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5Z" />}
             </svg>
-            {presenting ? 'Stop presentation' : 'Presentation mode'}
+            {presenting ? t.shell.stopPresentation : t.shell.presentation}
           </button>
         )}
         <button
@@ -688,7 +690,7 @@ export default function App() {
             <path d="M3 12a9 9 0 1 0 3-6.7" />
             <path d="M3 4v5h5" />
           </svg>
-          Reset view
+          {t.shell.resetView}
         </button>
       </div>
 
@@ -737,7 +739,7 @@ export default function App() {
           loadFailed={emsFailed}
           routeNote={
             weatherPin.scope === 'route' && weatherPin.own
-              ? `When this route's trains were there: average ${formatTemp(weatherPin.temp)}C${weatherPin.snow === null ? '' : `, ${formatSnow(weatherPin.snow)} of snow`}.`
+              ? t.weather.routeNote(weatherPin.temp, weatherPin.snow)
               : undefined
           }
           onClose={() => setWeatherPin(null)}
@@ -753,7 +755,7 @@ export default function App() {
           mapReady ? 'opacity-0' : 'opacity-100'
         }`}
       >
-        <p className="font-board m-0 text-2xl font-medium text-(--muted)">Loading the map…</p>
+        <p className="font-board m-0 text-2xl font-medium text-(--muted)">{t.loadingMap}</p>
       </div>
     </div>
   )

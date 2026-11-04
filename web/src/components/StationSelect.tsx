@@ -1,3 +1,4 @@
+import { useLang } from '../i18n'
 import type { StationFeature } from '../lib/types'
 import StationCombobox from './StationCombobox'
 
@@ -13,11 +14,12 @@ interface StationSelectProps {
  * camera there, so this component doesn't need to know about the map instance at all.
  */
 export default function StationSelect({ stations, selected, onSelect }: StationSelectProps) {
+  const { t } = useLang()
   return (
     <section className="card">
       <StationCombobox
         id="station-select"
-        label="Jump to a station"
+        label={t.station.jump}
         stations={stations}
         value={selected}
         onChange={onSelect}

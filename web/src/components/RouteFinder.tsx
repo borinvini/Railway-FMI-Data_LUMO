@@ -1,7 +1,6 @@
-import { trainsText } from '../lib/period'
+import { useLang } from '../i18n'
 import type { RouteResult } from '../lib/routeFinder'
 import type { StationFeature } from '../lib/types'
-import { trainTypeName } from '../lib/trainTypes'
 import StationCombobox, { stationLabel } from './StationCombobox'
 
 interface RouteFinderProps {
@@ -32,17 +31,18 @@ const ghostButton =
  * Direct trains only -- a train that stops at the start station and later at the end station.
  */
 export default function RouteFinder({ stations, start, end, result, onStart, onEnd, onSwap, onRandom, onClear, onLive, liveRunning, period }: RouteFinderProps) {
+  const { t } = useLang()
   const both = start !== null && end !== null
 
   return (
     <section className="card" aria-labelledby="route-finder-title">
       <div className="mb-2.5 flex items-center justify-between">
-        <h2 id="route-finder-title" className="font-board m-0 text-[22px] leading-none font-semibold">Find a route</h2>
+        <h2 id="route-finder-title" className="font-board m-0 text-[22px] leading-none font-semibold">{t.finder.title}</h2>
         {(start || end) && (
           <button
             type="button"
             onClick={onClear}
-            aria-label="Clear route"
+            aria-label={t.finder.clear}
             className="-mr-2 flex h-11 w-11 cursor-pointer items-center justify-center rounded-lg text-lg text-(--card-ink-3) hover:text-(--card-ink)"
           >
             ✕
@@ -51,9 +51,9 @@ export default function RouteFinder({ stations, start, end, result, onStart, onE
       </div>
 
       <div className="flex flex-col gap-2.5">
-        <StationCombobox id="route-from" label="From" placeholder="Start station…" stations={stations} value={start} onChange={onStart} excludeCode={end?.code} />
+        <StationCombobox id="route-from" label={t.finder.from} placeholder={t.finder.fromPlaceholder} stations={stations} value={start} onChange={onStart} excludeCode={end?.code} />
         <StationCombobox
-          id="route-to" label="To" placeholder="End station…" stations={stations} value={end} onChange={onEnd} excludeCode={start?.code}
+          id="route-to" label={t.finder.to} placeholder={t.finder.toPlaceholder} stations={stations} value={end} onChange={onEnd} excludeCode={start?.code}
           labelAction={
             // Trains are counted per direction (they must stop at "From" first), so this flips
             // the pair to see the opposite direction's trains.
@@ -61,8 +61,8 @@ export default function RouteFinder({ stations, start, end, result, onStart, onE
               type="button"
               onClick={onSwap}
               disabled={!start && !end}
-              aria-label="Swap direction"
-              title="Swap direction"
+              aria-label={t.finder.swap}
+              title={t.finder.swap}
               className={`${ghostButton} -my-1.5 h-11 w-11`}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
@@ -81,7 +81,7 @@ export default function RouteFinder({ stations, start, end, result, onStart, onE
           <circle cx="12" cy="12" r="1" fill="currentColor" />
           <circle cx="8" cy="16" r="1" fill="currentColor" /><circle cx="16" cy="16" r="1" fill="currentColor" />
         </svg>
-        Random route
+        {t.finder.random}
       </button>
 
       {both && result && (
@@ -95,28 +95,28 @@ export default function RouteFinder({ stations, start, end, result, onStart, onE
             {!liveRunning && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-current opacity-60" />}
             <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-current" />
           </span>
-          {liveRunning ? 'Stop' : 'Play the journey'}
+          {liveRunning ? t.finder.stop : t.finder.play}
         </button>
       )}
 
       <div className="mt-3 border-t border-(--card-line) pt-2.5 text-[15px] text-(--card-ink-2)">
-        {!both && 'Pick two stations to see which trains connect them.'}
-        {both && !result && `No direct train between these stations, ${period}.`}
+        {!both && t.finder.pickTwo}
+        {both && !result && t.finder.noDirect(period)}
         {both && result && (
           <>
             <ul className="m-0 list-none p-0">
-              {result.byType.map((t) => (
-                <li key={t.type} className="flex items-baseline justify-between gap-3 py-0.5">
+              {result.byType.map((r) => (
+                <li key={r.type} className="flex items-baseline justify-between gap-3 py-0.5">
                   <span>
-                    <span className="font-board mr-1.5 text-lg font-semibold text-(--card-ink)">{t.type}</span>{' '}
-                    {trainTypeName(t.type)}
+                    <span className="font-board mr-1.5 text-lg font-semibold text-(--card-ink)">{r.type}</span>{' '}
+                    {t.trainType(r.type)}
                   </span>
-                  <span className="shrink-0">{trainsText(t.trains)}</span>
+                  <span className="shrink-0">{t.trains(r.trains)}</span>
                 </li>
               ))}
             </ul>
             <div className="mt-1.5 text-sm text-(--card-ink-3)">
-              Direct trains, {period}, from {stationLabel(start!.name)} to {stationLabel(end!.name)}
+              {t.finder.direct(period, stationLabel(start!.name), stationLabel(end!.name))}
             </div>
           </>
         )}

@@ -6,9 +6,10 @@ import {
   type BadgeStep,
 } from '../lib/colors'
 import { WEATHER_PIN_ICON } from '../lib/markerIcon'
+import { useLang } from '../i18n'
 
 // One example delay inside each badge range, so the sample reads like the real badges on the map.
-const EXAMPLE_DELAYS = ['1.4', '3.2', '7.6']
+const EXAMPLE_DELAYS = [1.4, 3.2, 7.6]
 
 // The same ring colour as the map's badges (Map.tsx).
 const RING = '#02060d'
@@ -50,35 +51,36 @@ function PinSample({ temp, snow }: { temp: string; snow: string }) {
  *  CLAUDE.md "Map style". Shows the pin gradient normally; while a route is highlighted, a sample of
  *  every marker that can appear on it, written the way it looks on the map. */
 export default function Legend({ routeMode, weatherShown }: { routeMode: boolean; weatherShown: boolean }) {
+  const { t, f } = useLang()
   if (routeMode) {
     return (
       <div className="w-[280px] rounded-[10px] border border-(--line) bg-(--surface) px-[18px] py-4 backdrop-blur-[8px]">
-        <div className="mb-2.5 text-sm text-(--muted)">Average delay at this stop on the route</div>
+        <div className="mb-2.5 text-sm text-(--muted)">{t.legend.stop}</div>
         <ul className="m-0 flex list-none flex-col gap-2 p-0 text-sm text-(--muted)">
           {ROUTE_BADGE_STEPS.map((step, i) => (
-            <li key={step.label} className="flex items-center gap-2.5">
-              <BadgeSample step={step} value={EXAMPLE_DELAYS[i]} />
-              {step.label}
+            <li key={step.below} className="flex items-center gap-2.5">
+              <BadgeSample step={step} value={f.dec(EXAMPLE_DELAYS[i], 1)} />
+              {t.legend.badges[i]}
             </li>
           ))}
           <li className="flex items-center gap-2.5">
             <BadgeSample step={ROUTE_BADGE_NO_FIGURE} value="–" />
-            {ROUTE_BADGE_NO_FIGURE.label}
+            {t.legend.noFigure}
           </li>
           {weatherShown && (
             <>
               <li className="mt-1 border-t border-(--line) pt-3">
                 {/* Section title; the two explanations sit to the right of the pin, level with the
                     pin's upper (temperature) and lower (snow depth) halves. */}
-                <div className="mb-2 text-sm text-(--muted)">Weather station</div>
+                <div className="mb-2 text-sm text-(--muted)">{t.legend.weatherStation}</div>
                 <div className="flex items-center gap-3">
                   <PinSample temp={'−3°'} snow="12 cm" />
                   <span className="relative block h-14 flex-1">
-                    <span className="absolute left-0 text-sm leading-none text-(--muted)" style={{ top: '16%' }}>Temperature</span>
-                    <span className="absolute left-0 text-sm leading-none text-(--muted)" style={{ top: '48%' }}>Snow depth</span>
+                    <span className="absolute left-0 text-sm leading-none text-(--muted)" style={{ top: '16%' }}>{t.legend.temperature}</span>
+                    <span className="absolute left-0 text-sm leading-none text-(--muted)" style={{ top: '48%' }}>{t.legend.snowDepth}</span>
                   </span>
                 </div>
-                <div className="mt-1.5 text-sm text-(--muted)">When this route's trains were there</div>
+                <div className="mt-1.5 text-sm text-(--muted)">{t.legend.whenThere}</div>
               </li>
             </>
           )}
@@ -89,14 +91,14 @@ export default function Legend({ routeMode, weatherShown }: { routeMode: boolean
 
   return (
     <div className="w-[260px] rounded-[10px] border border-(--line) bg-(--surface) px-[18px] py-4 backdrop-blur-[8px]">
-      <div className="text-sm text-(--muted)">Average delay at this station</div>
+      <div className="text-sm text-(--muted)">{t.legend.station}</div>
       <div
         className="my-2 h-1.5 rounded-full"
         style={{ background: `linear-gradient(90deg, ${DELAY_RAMP_HEX.join(', ')})` }}
       />
       <div className="flex justify-between text-sm text-(--muted)">
-        <span>on time</span>
-        <span>8+ min late</span>
+        <span>{t.legend.onTime}</span>
+        <span>{t.legend.late8}</span>
       </div>
     </div>
   )

@@ -1,4 +1,5 @@
 import { forwardRef, type ReactNode } from 'react'
+import { useLang } from '../../i18n'
 
 export type PhoneSheetName = 'route' | 'station' | 'overview'
 
@@ -11,10 +12,9 @@ interface DockProps {
 }
 
 const ICON = 'h-[22px] w-[22px]'
-const TABS: { name: PhoneSheetName; label: string; icon: ReactNode }[] = [
+const TABS: { name: PhoneSheetName; icon: ReactNode }[] = [
   {
     name: 'route',
-    label: 'Route',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={ICON}>
         <circle cx="6" cy="18" r="2.5" /><circle cx="18" cy="6" r="2.5" />
@@ -24,7 +24,6 @@ const TABS: { name: PhoneSheetName; label: string; icon: ReactNode }[] = [
   },
   {
     name: 'station',
-    label: 'Station',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={ICON}>
         <path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11Z" /><circle cx="12" cy="10" r="2.3" />
@@ -33,7 +32,6 @@ const TABS: { name: PhoneSheetName; label: string; icon: ReactNode }[] = [
   },
   {
     name: 'overview',
-    label: 'Overview',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={ICON}>
         <path d="M4 20V10" /><path d="M10 20V4" /><path d="M16 20v-7" /><path d="M22 20H2" />
@@ -45,32 +43,33 @@ const TABS: { name: PhoneSheetName; label: string; icon: ReactNode }[] = [
 /** Phone layout: the three tabs at the bottom, like the board at a station. Each opens its sheet;
  *  tapping the open one closes it again. */
 const Dock = forwardRef<HTMLElement, DockProps>(function Dock({ open, onOpen, routeActive, stationActive }, ref) {
+  const { t } = useLang()
   return (
     <nav
       ref={ref}
-      aria-label="Panels"
+      aria-label={t.phone.dockAria}
       className="absolute inset-x-0 bottom-0 z-40 border-t border-(--line) bg-(--surface) backdrop-blur-[8px]"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
       <ul className="m-0 grid h-16 list-none grid-cols-3 p-0">
-        {TABS.map((t) => {
-          const active = open === t.name
-          const dot = !active && ((t.name === 'route' && routeActive) || (t.name === 'station' && stationActive))
+        {TABS.map((tab) => {
+          const active = open === tab.name
+          const dot = !active && ((tab.name === 'route' && routeActive) || (tab.name === 'station' && stationActive))
           return (
-            <li key={t.name}>
+            <li key={tab.name}>
               <button
                 type="button"
                 aria-pressed={active}
-                onClick={() => onOpen(active ? null : t.name)}
+                onClick={() => onOpen(active ? null : tab.name)}
                 className={`relative flex h-full w-full cursor-pointer flex-col items-center justify-center gap-1 ${active ? 'text-(--text)' : 'text-(--muted)'}`}
               >
                 {/* The open tab is marked by an ice line on the dock's top edge. */}
                 <span className={`absolute inset-x-6 top-0 h-[2px] rounded-full bg-(--ice) transition-opacity duration-150 ${active ? 'opacity-100' : 'opacity-0'}`} />
                 <span className="relative">
-                  {t.icon}
+                  {tab.icon}
                   {dot && <span className="absolute -top-0.5 -right-1.5 h-2 w-2 rounded-full bg-(--ice)" aria-hidden="true" />}
                 </span>
-                <span className="font-board text-[15px] leading-none tracking-[0.02em]">{t.label}</span>
+                <span className="font-board text-[15px] leading-none tracking-[0.02em]">{t.phone[tab.name]}</span>
               </button>
             </li>
           )

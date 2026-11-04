@@ -1,16 +1,20 @@
 import uoulu from '../assets/logos/uoulu.png'
 import flagship from '../assets/logos/6g-flagship.png'
 import interreg from '../assets/logos/interreg-aurora.png'
+import { useLang } from '../i18n'
 
 const GITHUB_URL = 'https://github.com/borinvini'
 
 /** Partner logos, recoloured for the dark theme by scripts/make_logos.py. All one line high, so they
- *  share one height. */
-const LOGOS = [
-  { src: uoulu, alt: 'University of Oulu', href: 'https://www.oulu.fi/en' },
-  { src: flagship, alt: '6G Flagship', href: 'https://www.6gflagship.com/' },
-  { src: interreg, alt: 'Interreg Aurora, co-funded by the European Union', href: 'https://www.interregaurora.eu/' },
-]
+ *  share one height. The names (alt text) and the university's page follow the language. */
+function useLogos() {
+  const { t } = useLang()
+  return [
+    { src: uoulu, alt: t.footer.uoulu, href: t.footer.uouluHref },
+    { src: flagship, alt: '6G Flagship', href: 'https://www.6gflagship.com/' },
+    { src: interreg, alt: t.footer.interreg, href: 'https://www.interregaurora.eu/' },
+  ]
+}
 
 const link = 'rounded-sm' // focus outline comes from the global :focus-visible rule in index.css
 
@@ -27,6 +31,8 @@ function GithubMark() {
  *  `embedded`: the phone layout's version, a dark plate at the end of the Overview sheet (the phone
  *  has no footer strip, so the map gets the full height). */
 export default function Footer({ embedded = false }: { embedded?: boolean }) {
+  const { t } = useLang()
+  const LOGOS = useLogos()
   if (embedded) {
     return (
       <footer className="mt-4 flex flex-col gap-3 rounded-xl bg-(--bg) px-4 py-4 text-[15px] text-(--muted)">
@@ -41,14 +47,14 @@ export default function Footer({ embedded = false }: { embedded?: boolean }) {
         </ul>
         <p className="m-0 flex flex-wrap items-center gap-x-4 border-t border-(--line) pt-2">
           <span>
-            Built by <span className="text-(--text)">Vinicius Pozzobon Borin</span>
+            {t.footer.builtBy} <span className="text-(--text)">Vinicius Pozzobon Borin</span>
           </span>
           <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className={`${link} -mx-1 inline-flex min-h-11 items-center gap-1.5 px-1 text-(--text)`}>
             <GithubMark />
             GitHub
           </a>
         </p>
-        <p className="m-0 text-sm">Data: Fintraffic and the Finnish Meteorological Institute (CC BY 4.0)</p>
+        <p className="m-0 text-sm">{t.footer.dataLong}</p>
       </footer>
     )
   }
@@ -56,7 +62,7 @@ export default function Footer({ embedded = false }: { embedded?: boolean }) {
     <footer className="absolute inset-x-0 bottom-0 z-30 flex h-(--footer-h) flex-col-reverse items-center justify-center gap-0 border-t border-(--line) bg-[rgba(2,6,13,0.86)] px-4 backdrop-blur-[8px] lg:flex-row lg:justify-between lg:gap-6 lg:px-6">
       <p className="m-0 flex flex-wrap items-center gap-x-4 text-[13px] text-(--muted) sm:text-[15px]">
         <span>
-          Built by <span className="text-(--text)">Vinicius Pozzobon Borin</span>
+          {t.footer.builtBy} <span className="text-(--text)">Vinicius Pozzobon Borin</span>
         </span>
         <a
           href={GITHUB_URL}
@@ -67,8 +73,8 @@ export default function Footer({ embedded = false }: { embedded?: boolean }) {
           <GithubMark />
           GitHub
         </a>
-        <span className="hidden xl:inline 2xl:hidden">Data: Fintraffic, FMI</span>
-        <span className="hidden 2xl:inline">Data: Fintraffic, Finnish Meteorological Institute</span>
+        <span className="hidden xl:inline 2xl:hidden">{t.footer.dataShort}</span>
+        <span className="hidden 2xl:inline">{t.footer.dataMid}</span>
       </p>
 
       <ul className="m-0 flex list-none items-center gap-3 p-0 sm:gap-6">

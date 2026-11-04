@@ -1,8 +1,9 @@
 import { useEffect, useMemo } from 'react'
-import { count, periodLabel, scopeOf } from '../lib/period'
-import { MONTH_NAMES, monthTitle, seasonal, yearly } from '../lib/trends'
+import { useLang } from '../i18n'
+import { periodLabel, scopeOf } from '../lib/period'
+import { seasonal, yearly } from '../lib/trends'
 import type { SummaryFile } from '../lib/types'
-import ConditionList, { CONDITION_CAVEAT, CONDITION_KEY } from './ConditionList'
+import ConditionList from './ConditionList'
 import { MonthlyLine, SeasonBars } from './DelayCharts'
 import YearChips from './YearChips'
 
@@ -20,6 +21,7 @@ interface DelayTrendsProps {
  * RouteDetails. The picked year is drawn strong on the line and the rest fade.
  */
 export default function DelayTrends({ summary, year, onYear, onClose }: DelayTrendsProps) {
+  const { t } = useLang()
   const series = useMemo(() => ({ avg: summary.trend.avg, n: summary.trend.arrivals }), [summary])
   const bySeason = useMemo(() => seasonal(summary.months, series, year), [summary, series, year])
   const byYear = useMemo(() => yearly(summary.months, series), [summary, series])
@@ -41,14 +43,12 @@ export default function DelayTrends({ summary, year, onYear, onClose }: DelayTre
     if (months.length >= 2) {
       const worst = months.reduce((a, b) => (b.v > a.v ? b : a))
       const best = months.reduce((a, b) => (b.v < a.v ? b : a))
-      out.push(
-        `${year === null ? 'Trains run' : `In ${year} trains ran`} latest in ${MONTH_NAMES[worst.k]} (${worst.v.toFixed(1)} min on average) and least late in ${MONTH_NAMES[best.k]} (${best.v.toFixed(1)} min).`,
-      )
+      out.push(t.trends.seasonLine(year, worst.k, worst.v, best.k, best.v))
     }
     if (byYear.length >= 2) {
       const worst = byYear.reduce((a, b) => (b.avg > a.avg ? b : a))
       const best = byYear.reduce((a, b) => (b.avg < a.avg ? b : a))
-      out.push(`${worst.year} was the latest year (${worst.avg.toFixed(1)} min on average), ${best.year} the least late (${best.avg.toFixed(1)} min).`)
+      out.push(t.trends.yearLine(worst.year, worst.avg, best.year, best.avg))
     }
     // The month with the fewest arrivals (spring 2020) is worth a line: fewer trains ran.
     const counts = summary.trend.arrivals.map((n, i) => ({ n, i })).filter((c): c is { n: number; i: number } => c.n !== null)
@@ -56,13 +56,13 @@ export default function DelayTrends({ summary, year, onYear, onClose }: DelayTre
       const fewest = counts.reduce((a, b) => (b.n < a.n ? b : a))
       const typical = [...counts].sort((a, b) => a.n - b.n)[Math.floor(counts.length / 2)].n
       if (fewest.n < typical * 0.7) {
-        out.push(`The fewest trains ran in ${monthTitle(summary.months[fewest.i])}: ${Math.round((fewest.n / typical) * 100)}% of a typical month.`)
+        out.push(t.trends.fewestLine(summary.months[fewest.i], Math.round((fewest.n / typical) * 100)))
       }
     }
     return out
-  }, [bySeason, byYear, summary, year])
+  }, [bySeason, byYear, summary, year, t])
 
-  const label = periodLabel(summary.years, null)
+  const label = periodLabel(summary.years, null) ?? t.allYears
   const conditions = summary.scopes[scopeOf(year)]?.conditions ?? null
 
   return (
@@ -77,34 +77,25 @@ export default function DelayTrends({ summary, year, onYear, onClose }: DelayTre
         <button
           type="button"
           onClick={onClose}
-          aria-label="Close"
+          aria-label={t.close}
           className="absolute top-2 right-2 flex h-11 w-11 cursor-pointer items-center justify-center text-lg text-(--card-ink-3) hover:text-(--card-ink) max-md:fixed max-md:top-[calc(6px+env(safe-area-inset-top))] max-md:right-2 max-md:z-10 max-md:rounded-full max-md:bg-(--card) max-md:text-(--card-ink) max-md:shadow-[0_2px_10px_rgba(0,0,0,0.25)]"
         >
           ✕
         </button>
 
         <h2 id="delay-trends-title" className="font-board m-0 pr-10 text-[32px] leading-tight font-semibold">
-          How delays changed
+          {t.trends.title}
         </h2>
-        <p className="m-0 mt-0.5 text-[15px] text-(--card-ink-2)">
-          Every long-distance train, {label}.{year !== null && ` ${year} is picked out below.`}
-        </p>
+        <p className="m-0 mt-0.5 text-[15px] text-(--card-ink-2)">{t.trends.intro(label, year)}</p>
         <YearChips years={summary.years} year={year} onYear={onYear} columns="grid-cols-5 sm:grid-cols-10" className="mt-3" />
 
-        <h3 className="font-board mt-5 mb-1 text-[22px] font-semibold">Month by month</h3>
-        <p className="m-0 mb-2 text-[15px] text-(--card-ink-2)">Typical minutes late when trains arrived, for each month.</p>
-        <MonthlyLine
-          months={summary.months}
-          avg={summary.trend.avg}
-          year={year}
-          ariaLabel="Line chart of the typical minutes late in each month"
-        />
+        <h3 className="font-board mt-5 mb-1 text-[22px] font-semibold">{t.trends.monthTitle}</h3>
+        <p className="m-0 mb-2 text-[15px] text-(--card-ink-2)">{t.trends.monthIntro}</p>
+        <MonthlyLine months={summary.months} avg={summary.trend.avg} year={year} ariaLabel={t.trends.monthAria} />
 
-        <h3 className="font-board mt-6 mb-1 text-[22px] font-semibold">Through the year</h3>
-        <p className="m-0 mb-2 text-[15px] text-(--card-ink-2)">
-          {year === null ? 'The same, for each calendar month, with all the years put together.' : `The same, for each calendar month of ${year}.`}
-        </p>
-        <SeasonBars avg={bySeason.avg} ariaLabel={`Bar chart of the typical minutes late in each calendar month${year === null ? '' : ` of ${year}`}`} />
+        <h3 className="font-board mt-6 mb-1 text-[22px] font-semibold">{t.trends.seasonTitle}</h3>
+        <p className="m-0 mb-2 text-[15px] text-(--card-ink-2)">{t.trends.seasonIntro(year)}</p>
+        <SeasonBars avg={bySeason.avg} ariaLabel={t.trends.seasonAria(year)} />
 
         {takeaways.map((line) => (
           <p key={line} className="m-0 mt-2 text-[15px] text-(--card-ink)">{line}</p>
@@ -112,16 +103,15 @@ export default function DelayTrends({ summary, year, onYear, onClose }: DelayTre
 
         {conditions && (
           <>
-            <h3 className="font-board mt-6 mb-1 text-[22px] font-semibold">Late trains in bad weather</h3>
+            <h3 className="font-board mt-6 mb-1 text-[22px] font-semibold">{t.trends.badWeather}</h3>
             <ConditionList defs={summary.conditions} cells={conditions} yearsAbove={year === null ? summary.yearsAbove : null} />
-            <p className="m-0 mt-1.5 text-sm text-(--card-ink-3)">{CONDITION_KEY}</p>
-            <p className="m-0 mt-1 text-sm text-(--card-ink-3)">{CONDITION_CAVEAT}</p>
+            <p className="m-0 mt-1.5 text-sm text-(--card-ink-3)">{t.conditions.key}</p>
+            <p className="m-0 mt-1 text-sm text-(--card-ink-3)">{t.conditions.caveat}</p>
           </>
         )}
 
         <p className="m-0 mt-4 text-sm text-(--card-ink-3)">
-          Delay is the minutes late at each arrival (early arrivals count as 0), averaged over{' '}
-          {count(summary.trend.arrivals.reduce<number>((s, n) => s + (n ?? 0), 0))} arrivals.
+          {t.trends.footnote(summary.trend.arrivals.reduce<number>((s, n) => s + (n ?? 0), 0))}
         </p>
       </div>
     </div>

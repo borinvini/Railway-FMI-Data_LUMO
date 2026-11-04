@@ -1,4 +1,4 @@
-import { formatSnow, formatTemp } from '../lib/weatherFormat'
+import { useLang } from '../i18n'
 
 interface LiveCardProps {
   /** The station the train is at (or last left); null before it has started. */
@@ -18,19 +18,20 @@ interface LiveCardProps {
  * is: a time-lapse of a typical trip built from averages, not real time.
  */
 export default function LiveCard({ stopName, delay, temp, snow, reached, total, onStop }: LiveCardProps) {
+  const { t } = useLang()
   const figures = [
-    delay === null ? null : `${delay.toFixed(1)} min late on average`,
-    temp === null ? null : `${formatTemp(temp)}C`,
-    snow === null ? null : `${formatSnow(snow)} of snow`,
-  ].filter((f): f is string => f !== null)
+    delay === null ? null : t.live.lateAvg(delay),
+    temp === null ? null : t.pinTemp(temp),
+    snow === null ? null : t.snowOf(snow),
+  ].filter((x): x is string => x !== null)
 
   return (
     <div className="pointer-events-auto rounded-[10px] border border-(--line) bg-(--surface) px-[18px] py-3.5 backdrop-blur-[8px]">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-sm text-(--muted)">A typical trip, built from averages</div>
+          <div className="text-sm text-(--muted)">{t.live.typical}</div>
           <div className="font-board mt-0.5 truncate text-[28px] leading-tight font-semibold text-(--text)">
-            {stopName ?? 'Getting ready…'}
+            {stopName ?? t.live.ready}
           </div>
           <div className="min-h-5 text-[15px] text-(--muted)">{figures.join(', ')}</div>
         </div>
@@ -39,7 +40,7 @@ export default function LiveCard({ stopName, delay, temp, snow, reached, total, 
           onClick={onStop}
           className="min-h-11 shrink-0 cursor-pointer rounded-lg border border-(--line) px-4 text-[15px] text-(--text) hover:bg-[rgba(156,195,232,0.12)]"
         >
-          Stop
+          {t.live.stop}
         </button>
       </div>
       <div className="mt-3 flex items-center gap-3">
@@ -49,7 +50,7 @@ export default function LiveCard({ stopName, delay, temp, snow, reached, total, 
             style={{ width: `${total > 0 ? Math.round((reached / total) * 100) : 0}%` }}
           />
         </div>
-        <div className="text-sm text-(--muted)">Stop {Math.max(reached, 0)} of {total}</div>
+        <div className="text-sm text-(--muted)">{t.live.progress(Math.max(reached, 0), total)}</div>
       </div>
     </div>
   )

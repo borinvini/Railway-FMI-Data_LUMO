@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react'
 import { liveCursor } from '../lib/liveCursor'
 import { subscribeLiveKm } from '../lib/liveStore'
 import { profileUpTo, type LiveProfile, type ProfilePoint } from '../lib/liveProfile'
+import { useLang } from '../i18n'
 
 Chart.register(LineController, LineElement, PointElement, LinearScale, Filler)
 
@@ -21,6 +22,8 @@ const FONT = "'Barlow Condensed', Barlow, system-ui, sans-serif"
  * React state. Averages at each stop, not readings.
  */
 export default function LiveChart({ profile, chartHeight = 170, title = true }: { profile: LiveProfile; chartHeight?: number; title?: boolean }) {
+  // Only the words around the chart change with the language; the axes hold numbers and names.
+  const { t } = useLang()
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -101,21 +104,21 @@ export default function LiveChart({ profile, chartHeight = 170, title = true }: 
 
   return (
     <div className="pointer-events-auto rounded-[10px] border border-(--line) bg-(--surface) px-[18px] pt-3 pb-2.5 backdrop-blur-[8px]">
-      {title && <div className="text-sm text-(--muted)">Temperature and snow along the way</div>}
+      {title && <div className="text-sm text-(--muted)">{t.live.weatherTitle}</div>}
       <div className="mt-1 flex items-center gap-4 text-sm text-(--muted)">
         <span className="flex shrink-0 items-center gap-3">
           <span className="flex items-center gap-1.5">
             <span className="inline-block h-0.5 w-4 rounded-full" style={{ background: TEMP }} />
-            Temperature
+            {t.live.temperature}
           </span>
           <span className="flex items-center gap-1.5">
             <span className="inline-block h-2.5 w-4 rounded-sm" style={{ background: 'rgba(156,195,232,0.45)', borderTop: `2px solid ${SNOW}` }} />
-            Snow depth
+            {t.live.snowDepth}
           </span>
         </span>
       </div>
       <div className="relative mt-2" style={{ height: chartHeight }}>
-        <canvas ref={canvasRef} role="img" aria-label="Chart of temperature and snow depth along the route, drawn as the train moves" />
+        <canvas ref={canvasRef} role="img" aria-label={t.live.weatherAria} />
       </div>
     </div>
   )

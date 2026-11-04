@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useLang } from '../i18n'
 import type { StationFeature } from '../lib/types'
 
 interface StationComboboxProps {
@@ -26,8 +27,10 @@ const normalize = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, 
  * "Jump to a station" box and the route finder's From/To pickers.
  */
 export default function StationCombobox({
-  id, label, placeholder = 'Select or type a station…', stations, value, onChange, excludeCode, labelAction,
+  id, label, placeholder: placeholderProp, stations, value, onChange, excludeCode, labelAction,
 }: StationComboboxProps) {
+  const { t } = useLang()
+  const placeholder = placeholderProp ?? t.combobox.placeholder
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
@@ -114,7 +117,7 @@ export default function StationCombobox({
             role="listbox"
             className="absolute top-full left-0 z-10 mt-1 max-h-[min(300px,40dvh)] w-full overflow-y-auto rounded-lg border border-[rgba(0,47,108,0.25)] bg-[#d6e2f0] py-1 text-base shadow-[0_8px_24px_rgba(0,0,0,0.35)]"
           >
-            {matches.length === 0 && <li className="px-3 py-2.5 text-(--card-ink-3)">No station found</li>}
+            {matches.length === 0 && <li className="px-3 py-2.5 text-(--card-ink-3)">{t.combobox.none}</li>}
             {matches.map((s, i) => (
               <li
                 key={s.code}

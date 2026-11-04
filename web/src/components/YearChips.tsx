@@ -1,3 +1,5 @@
+import { useLang } from '../i18n'
+
 interface YearChipsProps {
   years: number[]
   /** The picked year; null = all years. */
@@ -11,9 +13,10 @@ interface YearChipsProps {
 /** "All years" plus one chip per year. Shared by the title card and the "How delays changed" pop-up,
  *  so the year can be changed without leaving either. */
 export default function YearChips({ years, year, onYear, columns = 'grid-cols-5', className = '' }: YearChipsProps) {
+  const { t } = useLang()
   return (
-    <div role="group" aria-label="Year" className={`grid gap-1.5 ${columns} ${className}`}>
-      <Chip active={year === null} onClick={() => onYear(null)} className="col-span-2">All years</Chip>
+    <div role="group" aria-label={t.summary.yearGroup} className={`grid gap-1.5 ${columns} ${className}`}>
+      <Chip active={year === null} onClick={() => onYear(null)} className="col-span-2">{t.summary.allYearsChip}</Chip>
       {years.map((y) => (
         <Chip key={y} active={year === y} onClick={() => onYear(y)}>{y}</Chip>
       ))}

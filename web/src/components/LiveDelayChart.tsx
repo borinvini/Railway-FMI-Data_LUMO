@@ -4,6 +4,7 @@ import { rgbCss, routeBadgeStep, ROUTE_BADGE_STEPS } from '../lib/colors'
 import { liveCursor } from '../lib/liveCursor'
 import { delayUpTo, type DelayProfile, type ProfilePoint } from '../lib/liveProfile'
 import { subscribeLiveKm } from '../lib/liveStore'
+import { useLang } from '../i18n'
 
 Chart.register(LineController, LineElement, PointElement, LinearScale, Filler)
 
@@ -24,6 +25,8 @@ const levelColor = (minutes: number) => rgbCss(routeBadgeStep(minutes).fill)
  * are fixed from the whole route.
  */
 export default function LiveDelayChart({ profile, chartHeight = 150, title = true }: { profile: DelayProfile; chartHeight?: number; title?: boolean }) {
+  // Only the words around the chart change with the language; the axes hold numbers and names.
+  const { t } = useLang()
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -111,17 +114,17 @@ export default function LiveDelayChart({ profile, chartHeight = 150, title = tru
 
   return (
     <div className="pointer-events-auto rounded-[10px] border border-(--line) bg-(--surface) px-[18px] pt-3 pb-2.5 backdrop-blur-[8px]">
-      {title && <div className="text-sm text-(--muted)">Delay at each station, average</div>}
+      {title && <div className="text-sm text-(--muted)">{t.live.delayTitle}</div>}
       <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-sm text-(--muted)">
-        {ROUTE_BADGE_STEPS.map((step) => (
-          <span key={step.label} className="flex items-center gap-1.5">
+        {ROUTE_BADGE_STEPS.map((step, i) => (
+          <span key={step.below} className="flex items-center gap-1.5">
             <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: rgbCss(step.fill) }} />
-            {step.label}
+            {t.legend.badges[i]}
           </span>
         ))}
       </div>
       <div className="relative mt-2" style={{ height: chartHeight }}>
-        <canvas ref={canvasRef} role="img" aria-label="Line chart of the average delay at each station along the route, drawn as the train moves" />
+        <canvas ref={canvasRef} role="img" aria-label={t.live.delayAria} />
       </div>
     </div>
   )

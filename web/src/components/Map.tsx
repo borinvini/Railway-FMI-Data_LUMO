@@ -13,6 +13,7 @@ import { LIVE, sample, trailPath, type LiveSample, type LiveTimeline } from '../
 import { setLiveKm } from '../lib/liveStore'
 import { blendIn, cameraAt, labelAlpha, LABEL_LIFE_SECONDS, PRESENT, TOUR_SECONDS, type Camera } from '../lib/presentation'
 import { formatSnow, formatTemp } from '../lib/weatherFormat'
+import { useLang } from '../i18n'
 import type { ConnectionFeature, FinlandGeoJSON, RouteHighlight, StationFeature, WeatherPin } from '../lib/types'
 
 // At the default zoom, only Finland's 10 biggest cities show a marker (see
@@ -203,6 +204,23 @@ export default function MapView({ stations, connections, finland, selected, onSe
   const containerRef = useRef<HTMLDivElement>(null)
   const phoneRef = useRef(phone)
   phoneRef.current = phone
+  // Words and number formats for the tooltips and badges. The overlay and its callbacks are created
+  // once, so they read these refs; a language change rebuilds the layers (effect below).
+  const { t, f, lang } = useLang()
+  const tRef = useRef(t)
+  tRef.current = t
+  const fRef = useRef(f)
+  fRef.current = f
+  const langRef = useRef(lang)
+  langRef.current = lang
+  // MapLibre writes the compass tooltip once, in English; keep it in the page's language.
+  function setCompassTitle() {
+    const button = containerRef.current?.querySelector<HTMLButtonElement>('.maplibregl-ctrl-compass')
+    if (!button) return
+    button.title = tRef.current.map.compass
+    button.setAttribute('aria-label', tRef.current.map.compass)
+  }
+  useEffect(setCompassTitle, [lang])
   const insetsRef = useRef(insets)
   insetsRef.current = insets
   const mapRef = useRef<maplibregl.Map | null>(null)
@@ -653,15 +671,16 @@ export default function MapView({ stations, connections, finland, selected, onSe
         getPosition: (d) => [d.lon, d.lat],
         getText: (d) => {
           const v = routeValuesRef.current.get(d.code)
-          return v === undefined ? '–' : v.avg.toFixed(1)
+          return v === undefined ? '–' : fRef.current.dec(v.avg, 1)
         },
         getSize: (d) => (d.code === route?.start || d.code === route?.end ? 17 : 14),
         getColor: (d) => [...routeBadgeStep(routeValuesRef.current.get(d.code)?.avg).text, 255],
         sizeUnits: 'pixels',
         getTextAnchor: 'middle', getAlignmentBaseline: 'center',
         fontFamily: 'system-ui, sans-serif', fontWeight: 700,
-        characterSet: '0123456789.–',
-        updateTriggers: { getText: [routeValues], getColor: [routeValues], getSize: [route] },
+        // "." for English, "," for the Finnish decimal comma.
+        characterSet: '0123456789.,–',
+        updateTriggers: { getText: [routeValues, langRef.current], getColor: [routeValues], getSize: [route] },
       }),
       // Route-end weather pins, above the badges (see `topPins`).
       ...pinLayers('-top', topPins),
@@ -769,6 +788,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
       )
 
       map.addControl(new maplibregl.NavigationControl({ showZoom: false, visualizePitch: true }), 'top-right')
+      setCompassTitle()
 
       function updateResetVisibility() {
         if (!map) return
@@ -805,32 +825,28 @@ export default function MapView({ stations, connections, finland, selected, onSe
           // Build the text per layer: on a route line `object` is a path (an array of coordinates),
           // not a station -- touching `station.avgDelay` there throws, which stops deck.gl's render
           // loop for good (the camera keeps moving but no new layers ever draw).
+          const w = tRef.current
           let text: string
           if (layerId.startsWith('route-highlight')) {
-            text = 'Click for route details'
+            text = w.map.routeClick
           } else if (layerId.startsWith('ems-pin')) {
             // A weather pin, not a train station: it has no `avgDelay`.
             const pin = object as WeatherPin
-            const t = `${formatTemp(pin.temp)}C`
-            const snow = pin.snow === null ? 'no snow figure' : `${formatSnow(pin.snow)} of snow`
-            if (pin.scope === 'station') {
-              text = `${pin.ems.name} weather station\n${pin.ems.km.toFixed(1)} km away\nAverage at train times: ${t}, ${snow}\nClick for the weather`
-            } else {
-              const figures = pin.own
-                ? `${t} on average, ${snow},\nwhen this route's trains were there`
-                : `Average at nearby stations: ${t}, ${snow}\n(no figure for this route's own trains)`
-              text = `${pin.ems.name} weather station\n${figures}\nServes ${pin.stationNames.join(', ')}\nClick for the weather`
-            }
+            const temp = w.pinTemp(pin.temp)
+            const snow = pin.snow === null ? w.map.noSnowFigure : w.snowOf(pin.snow)
+            text = pin.scope === 'station'
+              ? w.map.stationPin(pin.ems.name, pin.ems.km, temp, snow)
+              : w.map.routePin(pin.ems.name, pin.own, temp, snow, pin.stationNames)
           } else {
             const station = object as StationFeature
             if (layerId === 'route-badge-fill') {
               const v = routeValuesRef.current.get(station.code)
               const name = station.name.replace(/ asema$/, '')
-              if (v === undefined) text = `${name}\nNo saved figure for this station`
-              else if (v.own) text = `${name}\n${v.avg.toFixed(1)} min late on this route`
-              else text = `${name}\n${v.avg.toFixed(1)} min late (station average:\nno figure for this route's own trains)`
+              if (v === undefined) text = w.map.badgeNone(name)
+              else if (v.own) text = w.map.badgeOwn(name, v.avg)
+              else text = w.map.badgeFallback(name, v.avg)
             } else {
-              text = `${station.name}\n${station.avgDelay.toFixed(1)} min late on average`
+              text = w.map.station(station.name, station.avgDelay)
             }
           }
           return {
@@ -891,7 +907,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
     rankRef.current = rank
     overlayRef.current?.setProps({ layers: buildLayers() })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stations, connections, selected, routeHighlight, activeRoute, routeValues, weatherPins, selectedWeatherPin, showWeather])
+  }, [stations, connections, selected, routeHighlight, activeRoute, routeValues, weatherPins, selectedWeatherPin, showWeather, lang])
 
   // Pan to whichever station gets selected, whether that came from a map click or the
   // dropdown menu (StationSelect only lifts the selection to App; this is the one place
