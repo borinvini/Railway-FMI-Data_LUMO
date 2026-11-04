@@ -13,16 +13,25 @@ function Flag({ lang }: { lang: Lang }) {
 }
 
 /**
- * The language switch, as flags: UK for English, Finland for Finnish. The picked one is lit, the
- * other dimmed, and each button is named in words for screen readers. `card`: on a light card
- * (desktop title card); `dark`: on the dark phone bar. `compact` (phone top bar, where width is
- * short): one round button showing the other language's flag. Every target is 44 px.
+ * The language switch, as flags: UK for English, Finland for Finnish, named in words for screen
+ * readers. The site uses `compact`: one button showing the other language's flag (phone top bar;
+ * `framed` in the desktop top-right corner). The two-segment form (picked flag lit, the other
+ * dimmed; `card` or `dark` surface) is kept for a place with room for both. Every target is 44 px.
  */
-export default function LangSwitch({ tone = 'card', compact = false, className = '' }: { tone?: 'card' | 'dark'; compact?: boolean; className?: string }) {
+export default function LangSwitch({ tone = 'card', compact = false, framed = false, className = '' }: {
+  tone?: 'card' | 'dark'
+  compact?: boolean
+  /** Compact only: on its own over the map (desktop top-right corner), with the dark surface frame. */
+  framed?: boolean
+  className?: string
+}) {
   const { lang, setLang, t } = useLang()
 
   if (compact) {
     const other: Lang = lang === 'en' ? 'fi' : 'en'
+    const frame = framed
+      ? 'rounded-[10px] border border-(--line) bg-(--surface) backdrop-blur-[8px] hover:border-(--muted)'
+      : 'rounded-lg'
     return (
       <button
         type="button"
@@ -30,7 +39,7 @@ export default function LangSwitch({ tone = 'card', compact = false, className =
         onClick={() => setLang(other)}
         aria-label={SWITCH_TO[other]}
         title={SWITCH_TO[other]}
-        className={`flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg ${className}`}
+        className={`flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center ${frame} ${className}`}
       >
         <Flag lang={other} />
       </button>

@@ -26,7 +26,9 @@ export default function StationPanel({ station, onClose, onShowWeather, period, 
   const weather = station.weather
 
   return (
-    <div className="card absolute top-5 right-5 z-50 w-[300px]">
+    // Desktop: opens below the language button in the top-right corner (top 20 + 44 + 12 px) and
+    // scrolls when the screen is too short for it, clear of the footer.
+    <div className="card absolute top-5 right-5 z-50 w-[300px] md:top-[76px] md:max-h-[calc(100%-var(--footer-h)-92px)] md:overflow-y-auto">
       <button
         type="button"
         onClick={onClose}

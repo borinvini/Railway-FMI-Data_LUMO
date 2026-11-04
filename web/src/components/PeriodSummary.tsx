@@ -3,7 +3,6 @@ import { periodLabel, scopeOf } from '../lib/period'
 import type { SummaryFile } from '../lib/types'
 import { Sparkline } from './DelayCharts'
 import FinnishFlag from './FinnishFlag'
-import LangSwitch from './LangSwitch'
 import YearChips from './YearChips'
 
 interface PeriodSummaryProps {
@@ -13,32 +12,30 @@ interface PeriodSummaryProps {
   onYear: (year: number | null) => void
   /** Open the "How delays changed" pop-up. */
   onOpenTrends: () => void
-  /** Show the EN | FI switch in the card's corner (the phone has it in its top bar instead). */
-  langSwitch?: boolean
 }
 
 /**
- * Title card at the top of the left column: what this page is, the language switch, a year picker
+ * Title card at the top of the left column: what this page is, a year picker
  * (every number and colour on the page follows it), the period's two headline numbers (set like a
  * departure board) and a small month-by-month delay line that opens the full charts (which also hold
  * the late-trains-in-bad-weather figures). Numbers come from summary.json; until it loads the card
  * shows the title.
  */
-export default function PeriodSummary({ summary, year, onYear, onOpenTrends, langSwitch = true }: PeriodSummaryProps) {
+export default function PeriodSummary({ summary, year, onYear, onOpenTrends }: PeriodSummaryProps) {
   const { t, f } = useLang()
   const headline = summary?.scopes[scopeOf(year)] ?? null
   const label = periodLabel(summary?.years ?? null, year) ?? t.allYears
   const trainsText = headline ? f.int(headline.trains) : ''
 
   return (
-    <header className="card relative">
-      {/* The switch sits in the corner, clear of the title (which wraps to the space left of it). */}
-      {langSwitch && <LangSwitch className="absolute top-3 right-3" />}
-      <div className={`flex items-center gap-3 ${langSwitch ? 'pr-[92px]' : ''}`}>
+    <header className="card">
+      <div className="flex items-center gap-3">
         <FinnishFlag className="h-7 w-auto shrink-0 rounded-[2px] ring-1 ring-(--card-line)" />
-        <h1 className="font-board m-0 text-[26px] leading-tight font-semibold">{t.summary.title}</h1>
+        <div>
+          <h1 className="font-board m-0 text-[26px] leading-tight font-semibold">{t.summary.title}</h1>
+          <p className="m-0 text-[15px] text-(--card-ink-2)">{t.summary.tapHint(label)}</p>
+        </div>
       </div>
-      <p className="m-0 mt-1.5 text-[15px] text-(--card-ink-2)">{t.summary.tapHint(label)}</p>
 
       {summary && summary.years.length > 1 && (
         <YearChips years={summary.years} year={year} onYear={onYear} className="mt-3" />

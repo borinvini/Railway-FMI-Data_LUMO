@@ -595,9 +595,14 @@ buttons stay on screen; only Reset view is hidden while it plays.
 
 The site opens in English. A **flag switch** (`components/LangSwitch.tsx`: UK flag = English,
 Finnish flag = Finnish, `UKFlag.tsx` / `FinnishFlag.tsx`) changes every word on the page. Each
-button is named in words for screen readers ("English" / "Suomi"). On desktop it sits in the title
-card's corner: two segments, the picked flag lit and the other dimmed. On phones it is one button in
-the top bar that shows the other language's flag. Flags were the owner's choice over "EN | FI".
+button is named in words for screen readers ("In English" / "Suomeksi"). It is one button that
+shows the *other* language's flag, on desktop and on phones alike (the owner's choice, over "EN | FI"
+and over a two-flag switch in the title card).
+- **Desktop:** it sits in the page's top-right corner (`top-5 right-5`, dark surface frame,
+  `framed`). The MapLibre compass sits under it (`top: 84px` in `index.css`), and the station
+  panel opens below it (`md:top-[76px]`, scrolling when the screen is short), so the button stays
+  reachable.
+- **Phones:** it sits in the top bar, left of Reset view.
 
 - **Where the words live:** `web/src/i18n/`.
   - `en.ts`: every English string, grouped by feature; text with numbers or names is a small

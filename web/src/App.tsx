@@ -4,6 +4,7 @@ import Footer from './components/Footer'
 import Legend from './components/Legend'
 import DelayTrends from './components/DelayTrends'
 import PeriodSummary from './components/PeriodSummary'
+import LangSwitch from './components/LangSwitch'
 import RouteDetails from './components/RouteDetails'
 import RouteFinder from './components/RouteFinder'
 import SideColumn from './components/SideColumn'
@@ -588,7 +589,7 @@ export default function App() {
                 {stationPanel && <div className="relative mt-3 border-t border-(--card-line) pt-3">{stationPanel}</div>}
               </Sheet>
               <Sheet ref={overviewSheetRef} open={sheet === 'overview'} label={t.phone.sheetOverview} onClose={() => setSheet(null)} bottom={dockH} top={topH} maxHeight="76dvh">
-                <PeriodSummary summary={summary} year={year} onYear={setYear} onOpenTrends={() => setTrendsOpen(true)} langSwitch={false} />
+                <PeriodSummary summary={summary} year={year} onYear={setYear} onOpenTrends={() => setTrendsOpen(true)} />
                 <Footer embedded />
               </Sheet>
               {showPeek && routeStart && routeEnd && routeResult && (
@@ -695,6 +696,10 @@ export default function App() {
       </div>
 
       {stationPanel}
+
+      {/* Language: one flag button in the top-right corner, like the phone's top bar. The compass sits
+          under it (index.css) and the station panel opens below it, so it is always reachable. */}
+      <LangSwitch compact framed className="absolute top-5 right-5 z-[55]" />
 
       {/* Credits and partner logos: always on screen, also while presenting or playing a journey. */}
       <Footer />
