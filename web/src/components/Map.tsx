@@ -14,6 +14,7 @@ import { setLiveKm } from '../lib/liveStore'
 import { blendIn, cameraAt, labelAlpha, LABEL_LIFE_SECONDS, PRESENT, TOUR_SECONDS, type Camera } from '../lib/presentation'
 import { formatSnow, formatTemp } from '../lib/weatherFormat'
 import { useLang } from '../i18n'
+import { PREDICTOR_CODES } from '../lib/predictor'
 import type { ConnectionFeature, FinlandGeoJSON, RouteHighlight, StationFeature, WeatherPin } from '../lib/types'
 
 // At the default zoom, only Finland's 10 biggest cities show a marker (see
@@ -213,6 +214,8 @@ export default function MapView({ stations, connections, finland, selected, onSe
   fRef.current = f
   const langRef = useRef(lang)
   langRef.current = lang
+  const presentingRef = useRef(presenting)
+  presentingRef.current = presenting
   // MapLibre writes the compass tooltip once, in English; keep it in the page's language.
   function setCompassTitle() {
     const button = containerRef.current?.querySelector<HTMLButtonElement>('.maplibregl-ctrl-compass')
@@ -483,6 +486,38 @@ export default function MapView({ stations, connections, finland, selected, onSe
     // exactly the navy tag the Play the journey run uses for the station being passed.
     const nowMs = typeof performance !== 'undefined' ? performance.now() : 0
     const presentNames = presentLabelsRef.current.map((l) => ({ name: l.name, lon: l.lon, lat: l.lat, alpha: labelAlpha((nowMs - l.bornAt) / 1000) }))
+    // "AI" tags on the pins of the stations with an AI forecast (PREDICTOR_CODES), so visitors can see
+    // where to try it. Only beside a drawn pin: not in route mode (badges replace the pins), not while
+    // a journey plays or the presentation flies. Neutral navy and ice: colour on this map means delay.
+    // A tap on a tag selects its station, like the pin. (A function: it uses the pin's handlers,
+    // which are declared further down.)
+    const pinSize = (d: StationFeature) => (isSel(d) || isRouteEnd(d) ? 46 : isHovered(d) ? 40 : 30)
+    const aiStations = route || liveFrame || presentingRef.current ? [] : currentStations.filter((d) => PREDICTOR_CODES.has(d.code) && isRevealed(d))
+    const aiTagLayer = () => aiStations.length
+      ? [
+          new TextLayer<StationFeature>({
+            id: 'station-ai-tag', data: aiStations, pickable: true,
+            parameters: { depthCompare: 'always' },
+            getPosition: (d) => [d.lon, d.lat],
+            getText: () => tRef.current.map.aiTag,
+            getSize: 12, sizeUnits: 'pixels',
+            getColor: [234, 241, 248, 255],
+            // Upper right of the pin head (the pin rises from the point; its head is near the top).
+            getPixelOffset: (d) => [Math.round(pinSize(d) * 0.42), -Math.round(pinSize(d) * 0.9)],
+            getTextAnchor: 'start', getAlignmentBaseline: 'center',
+            fontFamily: WEATHER_FONT, fontWeight: 600,
+            characterSet: 'AI',
+            background: true,
+            backgroundPadding: [5, 2],
+            getBackgroundColor: [6, 16, 31, 235],
+            getBorderColor: [156, 195, 232, 220],
+            getBorderWidth: 1,
+            onHover: stationHover, onClick: stationClick,
+            updateTriggers: { getPixelOffset: [sel, hovered, route] },
+          }),
+        ]
+      : []
+
     const presentNameLayer = presentNames.length
       ? [
           new TextLayer<{ name: string; lon: number; lat: number; alpha: number }>({
@@ -714,6 +749,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
         onClick: stationClick,
         updateTriggers: { getSize: [sel, hovered, revealT, route], getColor: [sel, hovered, route] },
       }),
+      ...aiTagLayer(),
       ...liveTrain,
       ...presentNameLayer,
     ]
@@ -847,6 +883,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
               else text = w.map.badgeFallback(name, v.avg)
             } else {
               text = w.map.station(station.name, station.avgDelay)
+              if (PREDICTOR_CODES.has(station.code)) text += `\n${w.map.aiHint}`
             }
           }
           return {
@@ -907,7 +944,7 @@ export default function MapView({ stations, connections, finland, selected, onSe
     rankRef.current = rank
     overlayRef.current?.setProps({ layers: buildLayers() })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stations, connections, selected, routeHighlight, activeRoute, routeValues, weatherPins, selectedWeatherPin, showWeather, lang])
+  }, [stations, connections, selected, routeHighlight, activeRoute, routeValues, weatherPins, selectedWeatherPin, showWeather, lang, presenting])
 
   // Pan to whichever station gets selected, whether that came from a map click or the
   // dropdown menu (StationSelect only lifts the selection to App; this is the one place

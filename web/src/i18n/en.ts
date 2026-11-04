@@ -71,7 +71,9 @@ export const en = (f: Fmt) => ({
     stopping: 'Trains stopping here',
     routes: 'Routes served',
     cancelled: 'Cancelled',
-    askModel: 'Ask the AI model',
+    aiQuestion: 'Will a train here be late?',
+    aiIntro: 'An AI model learned from 7 years of trains at this station. Pick a day and a time to see its guess.',
+    askModel: 'Try the AI forecast',
     weatherStation: (name: string, km: number) => `Weather station: ${name}, ${f.dec(km, 1)} km away`,
     seeWeather: 'See the weather here',
     weatherHere: (temp: number, snow: number | null) =>
@@ -101,6 +103,7 @@ export const en = (f: Fmt) => ({
     temperature: 'Temperature',
     snowDepth: 'Snow depth',
     whenThere: "When this route's trains were there",
+    ai: 'AI forecast at this station',
     pill: 'Legend',
     pillHide: 'Hide',
     show: 'Show the legend',
@@ -109,6 +112,9 @@ export const en = (f: Fmt) => ({
 
   map: {
     routeClick: 'Click for route details',
+    /** The tag on the pins of the stations with an AI model, and the tooltip line for them. */
+    aiTag: 'AI',
+    aiHint: 'AI forecast: open the station to try it',
     /** MapLibre's own wording for the compass button. */
     compass: 'Drag to rotate map, click to reset north',
     noSnowFigure: 'no snow figure',
@@ -247,7 +253,9 @@ export const en = (f: Fmt) => ({
   },
 
   predictor: {
-    title: (station: string) => `Ask the AI model: ${station}`,
+    title: (station: string) => `AI forecast: ${station}`,
+    intro: (period: string) =>
+      `It learned from the trains that stopped here in ${period} and the weather they had. Pick a month, a day and a time to see how likely a train is to be late or cancelled.`,
     loading: 'Loading the model…',
     failed: 'Could not load the model. Please try again.',
     noModel: 'No model for this station.',

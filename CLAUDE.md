@@ -506,10 +506,28 @@ another route ends it; map pan/zoom is locked while it runs, and the 90 s idle r
   stay under 70 s).
 - To discard: `git switch station-network-map && git branch -D live-train`.
 
-## Delay predictor ("Ask the AI model")
+## Delay predictor ("AI forecast")
 
-The 7 stations modeled in the paper (HKI, PSL, TPE, SK, YV, OL, ROI) get an **Ask the AI model**
-button in the station panel. It opens `components/DelayPredictor.tsx`: the visitor picks a month,
+The 7 stations modeled in the paper (HKI, PSL, TPE, SK, YV, OL, ROI) get an **AI forecast** in the
+station panel. The feature has one name everywhere: "AI forecast" / "Tekoälyennuste".
+
+A first-time visitor must be able to tell what it is, so it is explained where it appears:
+- **On the map:** a small "AI" tag on those 7 pins (`station-ai-tag` `TextLayer` in `Map.tsx`).
+  - It is navy with an ice border and neutral on purpose, because colour means delay.
+  - It shows only beside a drawn pin: `isRevealed`, and not in route mode, during a journey or in
+    Presentation mode.
+  - It is pickable like the pin (a tap selects the station).
+  - The station legend has a row explaining it ("AI forecast at this station"), and the station
+    tooltip adds "AI forecast: open the station to try it".
+- **In the station panel:** a question ("Will a train here be late?"), one plain sentence, then the
+  **Try the AI forecast** button.
+- **In the pop-up:** an intro line under the title, saying what the model learned from (the
+  `predictor.json` period) and what to pick.
+
+The pop-up must still fit 1280×720 without scrolling; the intro was paid for with tighter spacing,
+not by dropping text.
+
+The button opens `components/DelayPredictor.tsx`: the visitor picks a month,
 a day of the week and a time (30-minute steps), and sees the chance that a train there is
 **disrupted = late by 1 min or more, or cancelled** (the paper's label, not the site's 5-minute
 rule; the copy says so), plus how far that is from the station's usual share, and a bar strip of

@@ -60,13 +60,19 @@ export default function StationPanel({ station, onClose, onShowWeather, period, 
       </div>
 
       {onAskModel && (
-        <button
-          type="button"
-          onClick={onAskModel}
-          className="mt-1 mb-1 flex min-h-11 w-full cursor-pointer items-center justify-center rounded-lg bg-(--card-ink) text-[15px] font-medium text-white hover:opacity-90"
-        >
-          {t.station.askModel}
-        </button>
+        // Says what the AI forecast is before asking anyone to press it: a question a visitor would
+        // ask, one plain sentence, then the button.
+        <div className="mt-1 border-t border-(--card-line) pt-2.5 text-[15px]">
+          <p className="m-0 font-medium text-(--card-ink)">{t.station.aiQuestion}</p>
+          <p className="m-0 mt-0.5 text-(--card-ink-2)">{t.station.aiIntro}</p>
+          <button
+            type="button"
+            onClick={onAskModel}
+            className="mt-2.5 mb-1 flex min-h-11 w-full cursor-pointer items-center justify-center rounded-lg bg-(--card-ink) text-[15px] font-medium text-white hover:opacity-90"
+          >
+            {t.station.askModel}
+          </button>
+        </div>
       )}
 
       {station.ems && (

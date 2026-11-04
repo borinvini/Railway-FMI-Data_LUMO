@@ -69,7 +69,9 @@ export const fi = (f: Fmt): Dict => {
       stopping: 'Täällä pysähtyneet junat',
       routes: 'Reittejä',
       cancelled: 'Peruttu',
-      askModel: 'Kysy tekoälymallilta',
+      aiQuestion: 'Myöhästyykö juna täällä?',
+      aiIntro: 'Tekoälymalli on oppinut tämän aseman junista seitsemän vuoden ajalta. Valitse päivä ja kellonaika, niin näet sen arvion.',
+      askModel: 'Kokeile tekoälyennustetta',
       weatherStation: (name, km) => `Sääasema: ${name}, ${f.dec(km, 1)} km päässä`,
       seeWeather: 'Katso sää täällä',
       weatherHere: (temp, snow) =>
@@ -104,6 +106,7 @@ export const fi = (f: Fmt): Dict => {
       temperature: 'Lämpötila',
       snowDepth: 'Lumensyvyys',
       whenThere: 'Kun tämän reitin junat olivat siellä',
+      ai: 'Tekoälyennuste tällä asemalla',
       pill: 'Selite',
       pillHide: 'Piilota',
       show: 'Näytä selite',
@@ -112,6 +115,9 @@ export const fi = (f: Fmt): Dict => {
 
     map: {
       routeClick: 'Napsauta: reitin tiedot',
+      // "AI" is used in Finnish too ("AI-malli"); "TA" would not be understood.
+      aiTag: 'AI',
+      aiHint: 'Tekoälyennuste: avaa asema ja kokeile',
       compass: 'Kierrä karttaa vetämällä, palauta pohjoinen ylös napsauttamalla',
       noSnowFigure: 'lumensyvyys ei tiedossa',
       stationPin: (name, km, temp, snow) =>
@@ -249,7 +255,9 @@ export const fi = (f: Fmt): Dict => {
     },
 
     predictor: {
-      title: (station) => `Kysy tekoälymallilta: ${station}`,
+      title: (station) => `Tekoälyennuste: ${station}`,
+      intro: (period) =>
+        `Malli on oppinut täällä vuosina ${period} pysähtyneistä junista ja niiden säästä. Valitse kuukausi, päivä ja kellonaika, niin näet, kuinka todennäköisesti juna on myöhässä tai peruttu.`,
       loading: 'Ladataan mallia…',
       failed: 'Mallia ei voitu ladata. Yritä uudelleen.',
       noModel: 'Tälle asemalle ei ole mallia.',

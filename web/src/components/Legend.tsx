@@ -100,6 +100,16 @@ export default function Legend({ routeMode, weatherShown }: { routeMode: boolean
         <span>{t.legend.onTime}</span>
         <span>{t.legend.late8}</span>
       </div>
+      {/* The "AI" tag on the pins of the stations with an AI forecast (Map.tsx `station-ai-tag`). */}
+      <div className="mt-3 flex items-center gap-2.5 border-t border-(--line) pt-3 text-sm text-(--muted)">
+        <span
+          className="font-board inline-flex shrink-0 items-center rounded-[3px] border border-[rgba(156,195,232,0.86)] bg-[#06101f] px-[5px] text-[12px] leading-[16px] font-semibold text-(--text)"
+          aria-hidden="true"
+        >
+          {t.map.aiTag}
+        </span>
+        {t.legend.ai}
+      </div>
     </div>
   )
 }

@@ -62,7 +62,7 @@ export default function DelayPredictor({ code, stationName, file, loadFailed, on
         aria-modal="true"
         aria-labelledby="predictor-title"
         onClick={(e) => e.stopPropagation()}
-        className="card relative max-h-[94vh] w-[min(780px,100%)] overflow-y-auto !rounded-xl !px-6 !py-5 !shadow-[0_20px_60px_rgba(0,0,0,0.5)] max-md:h-full max-md:max-h-none max-md:w-full max-md:!rounded-none max-md:!px-4 max-md:!pt-[calc(14px+env(safe-area-inset-top))] max-md:!pb-[calc(24px+env(safe-area-inset-bottom))]"
+        className="card relative max-h-[94vh] w-[min(780px,100%)] overflow-y-auto !rounded-xl !px-6 !py-4!shadow-[0_20px_60px_rgba(0,0,0,0.5)] max-md:h-full max-md:max-h-none max-md:w-full max-md:!rounded-none max-md:!px-4 max-md:!pt-[calc(14px+env(safe-area-inset-top))] max-md:!pb-[calc(24px+env(safe-area-inset-bottom))]"
       >
         <button
           type="button"
@@ -85,7 +85,9 @@ export default function DelayPredictor({ code, stationName, file, loadFailed, on
 
         {st && file && chance !== null && (
           <>
-            <div className="mt-3 flex flex-col gap-2.5">
+            {/* What this is, before the controls: a visitor may arrive here without any context. */}
+            <p className="m-0 mt-1 text-[15px] text-(--card-ink-2)">{p.intro(file.period.replace('-', '–'))}</p>
+            <div className="mt-2 flex flex-col gap-1.5">
               <Field label={p.month}>
                 {/* One joined bar: a single choice out of twelve, read as one control. */}
                 <div
@@ -152,7 +154,7 @@ export default function DelayPredictor({ code, stationName, file, loadFailed, on
               </Field>
             </div>
 
-            <div className={`mt-3 border-t border-(--card-line) pt-3 ${fewTrains ? 'opacity-60' : ''}`}>
+            <div className={`mt-2 border-t border-(--card-line) pt-2.5 ${fewTrains ? 'opacity-60' : ''}`}>
               <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
                 <span data-chance className="font-board text-[56px] leading-none font-semibold tabular-nums">{f.pct(Math.round(chance), 0)}</span>
                 <span className="text-[17px] leading-snug">{p.chance}</span>
@@ -180,7 +182,7 @@ export default function DelayPredictor({ code, stationName, file, loadFailed, on
               onPick={(s) => setPick((prev) => ({ ...prev, slot: s }))}
             />
 
-            <p className="m-0 mt-3 text-sm text-(--card-ink-3)">
+            <p className="m-0 mt-2 text-sm text-(--card-ink-3)">
               {p.footnote({
                 few: fewTrains,
                 station: stationName,
@@ -302,9 +304,9 @@ function DayStrip({ values, few, usual, selected, slotLabel, onPick }: DayStripP
   const { t, f } = useLang()
   const ticks = [0, 6, 12, 18, 24]
   return (
-    <div className="mt-3">
+    <div className="mt-2">
       <p className="m-0 mb-1 text-[15px] text-(--card-ink-2)">{t.predictor.dayStrip(usual)}</p>
-      <div className="relative h-[72px]">
+      <div className="relative h-[56px]">
         <div className="absolute inset-0 flex items-end gap-px">
           {values.map((v, i) => (
             <button
