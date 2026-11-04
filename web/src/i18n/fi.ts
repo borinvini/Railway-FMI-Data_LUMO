@@ -344,12 +344,31 @@ export const fi = (f: Fmt): Dict => {
 
     footer: {
       builtBy: 'Tekijä:',
-      dataLong: 'Aineisto: Fintraffic ja Ilmatieteen laitos (CC BY 4.0)',
-      dataShort: 'Aineisto: Fintraffic, IL',
-      dataMid: 'Aineisto: Fintraffic, Ilmatieteen laitos',
+      about: 'Tietoa',
+      aboutLong: 'Tietoa sivustosta',
+    },
+
+    about: {
+      title: 'Tietoa sivustosta',
+      intro:
+        'Sivusto avaa ikkunan FI-TW-aineistoon. Se on avoin aineisto, joka yhdistää Suomen kaukoliikenteen junat lähimmän sääaseman havaintoihin. Aineisto on julkaistu Open Research Europe -lehdessä, ja artikkeli kuvaa sen kokonaan.',
+      paperLabel: 'Artikkeli',
+      readPaper: 'Lue artikkeli',
+      authorLead: 'Tekijä:',
+      author:
+        'osana väitöskirjatutkimusta Oulun yliopiston Centre for Wireless Communications -yksikössä (CWC).',
+      profile: 'Tutkijaprofiili',
+      fundingTitle: 'Rahoitus',
+      funding:
+        'Tutkimusta ovat osittain tukeneet Suomessa ja Ruotsissa Euroopan unioni Interreg Aurora -hankkeen ENSURE-6G kautta (rahoituspäätös 20361812) sekä Suomessa Suomen Akatemia 6G Flagship -hankkeen kautta (rahoituspäätös 369116).',
+      dataTitle: 'Aineisto',
+      data: 'Junat: Fintraffic (Digitraffic). Sää: Ilmatieteen laitos. Molemmat CC BY 4.0 -lisenssillä.',
+      partnersTitle: 'Kumppanit',
       uoulu: 'Oulun yliopisto',
       uouluHref: 'https://www.oulu.fi/fi',
       interreg: 'Interreg Aurora, Euroopan unionin osarahoittama',
+      oulu2026: 'Oulu2026, Euroopan kulttuuripääkaupunki',
+      oulu2026Href: 'https://oulu2026.eu/',
     },
   }
 }

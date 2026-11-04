@@ -1,11 +1,13 @@
-"""Recolour the partner logos for the dark footer (not part of the data build).
+"""Recolour the partner logos for the About page's dark logo plate (not part of the data build).
 
 Reads web/src/assets/logos/src/*, writes transparent PNGs to web/src/assets/logos/:
   uoulu.png            tower + wordmark white, rays ice (pink in the original)
   6g-flagship.png      gold kept, white kept, black background removed
   interreg-aurora.png  dark blue -> white, lavender -> ice; the EU flag keeps its colours and
                        gets a thin white border (EU visibility rules on dark backgrounds);
-                       top line only, the "Aurora" row is cut
+                       the full lockup, "Aurora" row included
+  oulu2026.png         the official white RGB logo (ENG, horizontal) from the Oulu2026 media bank;
+                       already white on transparent, so only trimmed and resized
 
 Every pixel is "unmixed": it is treated as one ink laid over the plain background with some
 coverage (alpha). The closest ink wins, and the pixel is redrawn in that ink's new colour with the
@@ -49,11 +51,11 @@ def unmix(rgb: np.ndarray, bg, inks):
     return np.dstack([out_rgb, a * 255]).round().astype(np.uint8)
 
 
-def trim_and_save(rgba: np.ndarray, name: str):
+def trim_and_save(rgba: np.ndarray, name: str, height: int = HEIGHT):
     im = Image.fromarray(rgba, "RGBA")
     im = im.crop(im.getchannel("A").point(lambda v: 255 if v > 10 else 0).getbbox())
-    w = round(im.width * HEIGHT / im.height)
-    im = im.resize((w, HEIGHT), Image.LANCZOS)
+    w = round(im.width * height / im.height)
+    im = im.resize((w, height), Image.LANCZOS)
     path = OUT / name
     im.save(path, optimize=True)
     print(f"{name}: {im.width}x{im.height}, {path.stat().st_size / 1024:.1f} KB")
@@ -90,12 +92,17 @@ def interreg():
     rgba[y0:y1, x0:x1, :3] = flag
     rgba[y0:y1, x0:x1, 3] = 255
     print(f"  EU flag found at x {x0}-{x1}, y {y0}-{y1} (border {b} px)")
-    # Keep only the top line (Interreg + flag + "Co-funded by..."): the "Aurora" row below the flag is
-    # cut so all three footer logos are one line high.
-    trim_and_save(rgba[: y1 + b + 1], "interreg-aurora.png")
+    # The whole lockup, two lines tall (Interreg + flag + "Co-funded by...", then "Aurora").
+    trim_and_save(rgba, "interreg-aurora.png", height=2 * HEIGHT)
+
+
+def oulu2026():
+    im = np.asarray(Image.open(SRC / "oulu2026.png").convert("RGBA"))
+    trim_and_save(im, "oulu2026.png", height=2 * HEIGHT)
 
 
 if __name__ == "__main__":
     uoulu()
     flagship()
     interreg()
+    oulu2026()

@@ -338,12 +338,31 @@ export const en = (f: Fmt) => ({
 
   footer: {
     builtBy: 'Built by',
-    dataLong: 'Data: Fintraffic and the Finnish Meteorological Institute (CC BY 4.0)',
-    dataShort: 'Data: Fintraffic, FMI',
-    dataMid: 'Data: Fintraffic, Finnish Meteorological Institute',
+    about: 'About',
+    aboutLong: 'About this site',
+  },
+
+  about: {
+    title: 'About this site',
+    intro:
+      'This site is a window into FI-TW, an open dataset that joins every long-distance train in Finland with the weather at the nearest weather station. The dataset is published in Open Research Europe, and the paper describes it in full.',
+    paperLabel: 'The paper',
+    readPaper: 'Read the paper',
+    authorLead: 'Made by',
+    author:
+      'as part of doctoral research at the University of Oulu, Centre for Wireless Communications (CWC).',
+    profile: 'Researcher profile',
+    fundingTitle: 'Funding',
+    funding:
+      'This research was partially supported in Finland and Sweden by the European Union through the Interreg Aurora project ENSURE-6G (Grant Number: 20361812); and in Finland by the Research Council of Finland through the project 6G Flagship (Grant Number: 369116).',
+    dataTitle: 'Data',
+    data: 'Trains: Fintraffic (Digitraffic). Weather: Finnish Meteorological Institute. Both under CC BY 4.0.',
+    partnersTitle: 'Partners',
     uoulu: 'University of Oulu',
     uouluHref: 'https://www.oulu.fi/en',
     interreg: 'Interreg Aurora, co-funded by the European Union',
+    oulu2026: 'Oulu2026, European Capital of Culture',
+    oulu2026Href: 'https://oulu2026.eu/en',
   },
 })
 

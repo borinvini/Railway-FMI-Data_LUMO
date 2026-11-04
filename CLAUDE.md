@@ -680,8 +680,8 @@ What is on screen:
   - **Route sheet:** RouteFinder. When a pair gets a route, the sheet closes and **RoutePeek**
     shows "A → B" with Details and Play the journey. With no direct train the sheet stays open.
   - **Station sheet:** StationSelect plus StationPanel. A tap on a pin opens it.
-  - **Overview sheet:** PeriodSummary, then `<Footer embedded />`, a dark plate with the logos,
-    the credit and the data note. Phones have no footer strip.
+  - **Overview sheet:** PeriodSummary, then `<Footer embedded />`: the credit and an "About this
+    site" link (the logos are on the About page). Phones have no footer strip.
 - **Legend:** a pill (`LegendPill`) that opens the full Legend; "Hide weather stations" lives in it.
 - **Pop-ups** (RouteDetails, DelayTrends, WeatherStationDetails, DelayPredictor): full screen via
   `max-md:` classes, with the close button fixed top-right. RouteDetails swaps its route tabs for a
@@ -714,28 +714,40 @@ How the map follows the layout:
 Checked with Playwright touch emulation on iPhone 13 (390×664), iPhone SE (320×568), Pixel 7
 (412×839) and landscape (750×342). Landscape works, but a sheet there covers most of the map.
 
-## Footer and partner logos
+## Footer and About page
 
-A dark strip along the bottom (`components/Footer.tsx`, always shown, also while presenting or
-playing a journey) holds:
-- the credit "Built by Vinicius Pozzobon Borin" with a GitHub link (`https://github.com/borinvini`);
-- a data note (Fintraffic and FMI, both CC BY 4.0, which requires credit; it shows from 1280 px
-  wide);
-- the University of Oulu, 6G Flagship and Interreg Aurora logos, each linking to its site.
+**Footer** (`components/Footer.tsx`): a thin dark strip along the bottom, always shown (also while
+presenting or playing a journey), right-aligned: "Built by Vinicius Pozzobon Borin", GitHub
+(`https://github.com/borinvini`) and **About this site**. No logos there any more. Its height is the
+`--footer-h` token in `index.css` (40 px, one row at every width); the bottom row, the left column's
+max height, the station panel and MapLibre's attribution keep clear of it. On phones the Overview
+sheet ends with the credit and an "About this site" link instead.
 
-All three logos are one line high and share one height: 28 px, with 24 px and 18 px on smaller
-screens. The Interreg logo keeps only its top line, so the "Aurora" row is cut.
+**About page** (`components/AboutPage.tsx`, `aboutOpen` in `App.tsx`; same pop-up shell and Esc
+handling as `DelayTrends`; full screen on phones; closed by Reset view, the idle reset and
+Presentation mode). Content, text in `t.about`:
+- the site shows the **FI-TW** open dataset; paper card: "FI-TW: An open train–weather dataset for
+  railway delay analysis in Finland", Borin, Sant'Ana, Raheel, Mahmood, *Open Research Europe* 2026,
+  DOI 10.12688/openreseurope.24750.1, `https://ore.eu/article/view/1519` (proper names, kept as a
+  constant in the component, not translated);
+- made by Vinicius Pozzobon Borin as part of doctoral research at the University of Oulu, Centre for
+  Wireless Communications (CWC), with links to the researcher profile
+  (`https://www.oulu.fi/en/researchers/vinicius-pozzobon-borin`) and GitHub;
+- the funding statement (ENSURE-6G, grant 20361812; 6G Flagship, grant 369116), word for word in
+  English;
+- the data credit (Fintraffic/Digitraffic and FMI, CC BY 4.0, which requires credit);
+- the partner logos on a dark navy plate, 2 × 2: University of Oulu, 6G Flagship, the **full**
+  Interreg Aurora lockup (with the "Aurora" row) and **Oulu2026** (official white RGB, English,
+  horizontal, from the Oulu2026 media bank). Sized by visual weight, not one height.
 
-The footer's height is the `--footer-h` token in `index.css`: 52 px on one row, and 76 px on two
-rows below 1024 px. The bottom row (legend and buttons), the left column's max height and MapLibre's
-attribution all keep clear of it. The camera is unchanged: at 1280×720 Helsinki was already below
-the screen edge, and at 1920×1080 it sits above the strip.
+It fits 1280×720 without scrolling in both languages (checked with Playwright); keep it that way.
 
 - **Logos** are transparent PNGs in `web/src/assets/logos/`, made from the originals in `src/` by
   `scripts/make_logos.py` (Pillow + numpy; use the training conda env). The script does this:
   - it "unmixes" each pixel against the background, so the edges stay smooth;
   - it recolours blue to white and pink/lavender to ice;
-  - it keeps the 6G gold.
+  - it keeps the 6G gold;
+  - it only trims and resizes Oulu2026 (already white on transparent).
 
   Rerun it if the originals change; never edit the PNGs by hand.
 - **The EU flag keeps its real blue and yellow, with a thin white border.** EU visibility rules

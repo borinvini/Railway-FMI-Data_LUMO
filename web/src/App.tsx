@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import MapView from './components/Map'
 import Footer from './components/Footer'
+import AboutPage from './components/AboutPage'
 import Legend from './components/Legend'
 import DelayTrends from './components/DelayTrends'
 import PeriodSummary from './components/PeriodSummary'
@@ -53,6 +54,7 @@ export default function App() {
   // The picked year (null = all years). Every number and colour on the page follows it.
   const [year, setYear] = useState<number | null>(null)
   const [trendsOpen, setTrendsOpen] = useState(false)
+  const [aboutOpen, setAboutOpen] = useState(false)
   // Lazy files, loaded the first time they are needed and kept: a year's station figures, a period's
   // route statistics (data/scope/<period>/), the per-route monthly delays and each weather station.
   const [yearStations, setYearStations] = useState<Record<string, Record<string, StationStats>>>({})
@@ -337,6 +339,7 @@ export default function App() {
     setDetailIndex(null)
     setWeatherPin(null)
     setTrendsOpen(false)
+    setAboutOpen(false)
     setPredictorOpen(false)
     armedRef.current = true
     setShowPhase('aerial')
@@ -411,6 +414,7 @@ export default function App() {
     setDetailIndex(null)
     setWeatherPin(null)
     setTrendsOpen(false)
+    setAboutOpen(false)
     setPredictorOpen(false)
     setYear(null)
     setSheet(null)
@@ -590,7 +594,7 @@ export default function App() {
               </Sheet>
               <Sheet ref={overviewSheetRef} open={sheet === 'overview'} label={t.phone.sheetOverview} onClose={() => setSheet(null)} bottom={dockH} top={topH} maxHeight="76dvh">
                 <PeriodSummary summary={summary} year={year} onYear={setYear} onOpenTrends={() => setTrendsOpen(true)} />
-                <Footer embedded />
+                <Footer embedded onAbout={() => setAboutOpen(true)} />
               </Sheet>
               {showPeek && routeStart && routeEnd && routeResult && (
                 <RoutePeek
@@ -701,8 +705,8 @@ export default function App() {
           under it (index.css) and the station panel opens below it, so it is always reachable. */}
       <LangSwitch compact framed className="absolute top-5 right-5 z-[55]" />
 
-      {/* Credits and partner logos: always on screen, also while presenting or playing a journey. */}
-      <Footer />
+      {/* Credit and the About link: always on screen, also while presenting or playing a journey. */}
+      <Footer onAbout={() => setAboutOpen(true)} />
       </>
       )}
 
@@ -752,6 +756,8 @@ export default function App() {
       )}
 
       {trendsOpen && summary &&<DelayTrends summary={summary} year={year} onYear={setYear} onClose={() => setTrendsOpen(false)} />}
+
+      {aboutOpen && <AboutPage onClose={() => setAboutOpen(false)} />}
 
       {/* Until the first tiles arrive the basemap is flat navy, which reads as broken. */}
       <div

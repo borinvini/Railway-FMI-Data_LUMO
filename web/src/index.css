@@ -18,14 +18,9 @@
   --card-ink-3: #3f5873;
   --card-line: rgba(0, 47, 108, 0.14);
 
-  /* Footer strip (components/Footer.tsx); the bottom row, left column and map attribution keep
-     clear of it. Two rows (logos above the credit) below 1024 px. */
-  --footer-h: 52px;
-}
-@media (max-width: 1023px) {
-  :root {
-    --footer-h: 76px;
-  }
+  /* Footer strip (components/Footer.tsx), one thin row; the bottom row, left column and map
+     attribution keep clear of it. */
+  --footer-h: 40px;
 }
 
 /* Barlow (body) + Barlow Condensed (big numbers, titles): the railway-signage look. Both are
