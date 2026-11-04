@@ -31,12 +31,72 @@ Design rules that follow from that:
 | Data layers | **deck.gl** (v9) via `MapboxOverlay` (`interleaved: false`, `pickingRadius: 10`): `PathLayer` routes, `ScatterplotLayer` stations, optional `TripsLayer` attract-loop |
 | Panel charts | Chart.js (framework-agnostic; call its API directly inside a `useEffect` — no React-charting library needed) |
 | Data prep | Python 3, `fastparquet` + `pandas` (see gotchas) |
-| Hosting | **GitHub Pages**, built and published by `.github/workflows/deploy.yml` on every push to `main` |
+| Hosting | **GitHub Pages** on the owner's GitHub account, on the paid custom domain **finlandtrains.eu**; built and published by `.github/workflows/deploy.yml` on every push to `main` |
+
+Versions in `web/package.json`: React 19, Vite 8, Tailwind 4, **maplibre-gl 6** (the table's v4 was
+the prototype's CDN build; see the v6 gotchas), deck.gl 9.4, Chart.js 4.
 
 deck.gl is an overlay framework, not a basemap — that is why MapLibre is used underneath.
 MapLibre and deck.gl are plain JS libraries; use them the same way inside React as in the
 prototype — create the `maplibregl.Map` and `MapboxOverlay` instances in a `useEffect` on a
 `div` ref inside `Map.tsx`, no React-specific map wrapper (e.g. `react-map-gl`) needed.
+
+## Architecture
+
+**Hosting.** A static site with no server and no backend. It is hosted on **GitHub Pages from the
+owner's own GitHub account** (`borinvini/Railway-FMI-Data_LUMO`, public, only `main` is pushed) and
+served on a **paid custom domain, `finlandtrains.eu`** (bought and DNS-managed at Porkbun; the old
+`borinvini.github.io/Railway-FMI-Data_LUMO/` address and `www.` forward to it). Every push to `main`
+rebuilds and republishes it. Details: *Deploy (GitHub Pages)*.
+
+**Pipeline** (offline, on the owner's machine; the outputs are committed, so the deploy needs only git):
+
+```
+data/raw/*.parquet (96 months, git-ignored) + station CSV
+  -> scripts/routes_lib.py      the only parquet reader; per-month cache in data/derived/cache/
+  -> scripts/build_data.py      -> web/public/data/  start-up: stations, connections, route_patterns, summary
+                                                     lazy:     scope/<all|YYYY>/*, route_trends, ems/<slug>
+AI Results/*.pkl (LightGBM)
+  -> scripts/build_predictor.py -> web/public/data/predictor.json   (training conda env)
+logos/src/*  -> scripts/make_logos.py -> web/src/assets/logos/*.png (training conda env)
+scripts/analyse_weather.py, list_routes.py, list_stations.py: read-only analysis / CLI listings
+
+web/ (Vite) -- npm run build --> web/dist -- GitHub Actions --> GitHub Pages -> finlandtrains.eu
+```
+
+**Runtime** (in the browser):
+- `main.tsx` -> `LangProvider` (`i18n/index.tsx`) -> `App.tsx`.
+- **`App.tsx` owns all state**: the picked year/scope, the selected station, the route pair and its
+  result, every pop-up flag, the journey (`live`), the Presentation phase, the phone sheet and the
+  idle reset. It fetches the start-up JSON on load and the lazy JSON when first needed (per scope,
+  per weather station, the predictor), and passes plain data down.
+- **`components/Map.tsx`** is the one imperative part: it builds the MapLibre map (OpenFreeMap
+  "dark" style fetched once and restyled by `lib/mapStyle.ts`) and the deck.gl overlay, turns props
+  into layers, and reports back through callbacks (clicks, camera drift, journey progress, tour
+  loop). The `requestAnimationFrame` loops for the journey and Presentation mode live here.
+- Everything else is presentational: it renders props and calls App's callbacks.
+- **Layout switch:** `lib/useIsPhone.ts` (< 768 px) -> the phone shell (`components/phone/*`) or the
+  desktop tree. Both reuse the same cards and pop-ups.
+- The only runtime third-party requests are the basemap style and tiles (OpenFreeMap).
+
+**Module map:**
+
+| Area | Files |
+|---|---|
+| Left column (desktop) | `SideColumn`, `PeriodSummary` (+ `YearChips`), `RouteFinder`, `StationSelect` / `StationCombobox` |
+| Map and its key | `Map`, `Legend`, `StationPanel` |
+| Pop-ups (one shell: backdrop, `.card`, ✕, Esc) | `RouteDetails` (+ `DelayCharts`, `ConditionList`), `DelayTrends`, `WeatherStationDetails`, `DelayPredictor`, `AboutPage` |
+| Play the journey | `LiveCard`, `LiveDelayChart`, `LiveChart` |
+| Phone | `phone/PhoneTopBar`, `Dock`, `Sheet`, `RoutePeek`, `LegendPill`, `LiveCharts` |
+| Page chrome | `Footer`, `LangSwitch`, `FinnishFlag`, `UKFlag` |
+| Pure logic (`lib/`) | `routeFinder`, `routeStats`, `period`, `trends`, `predictor`, `liveTrain`, `liveProfile`, `liveCursor`, `presentation`, `weatherFormat`, `types` |
+| Map helpers (`lib/`) | `mapStyle`, `markerIcon`, `colors`, `importantStations` |
+| State helpers (`lib/`) | `liveStore` (per-frame pub-sub), `useIsPhone`, `useElementHeight` |
+| Words (`i18n/`) | `en`, `fi`, `format`, `index` |
+
+**Rules that hold everywhere:** pure helpers return data, not sentences (components word them via
+`t`/`f`); per-frame animation never goes through React state (`liveStore`, rAF loops in `Map`);
+generated JSON is never hand-edited; the colour on the map means delay only.
 
 ### Map style
 
@@ -189,17 +249,22 @@ Railway-FMI-Data_LUMO/
                    metadata_closest_ems_to_train_stations.csv  station coords + closest EMS, committed
   data/derived/    routes_index.csv station_index.csv   (CLI listings, committed)
                    cache/                               compact per-month cache of the parquets (git-ignored)
-  scripts/build_data.py                                 parquet + CSV -> web/public/data/*.json
+  scripts/         routes_lib.py build_data.py           data build (see Architecture)
+                   build_predictor.py make_logos.py      predictor.json / logo PNGs (training conda env)
+                   analyse_weather.py list_routes.py list_stations.py   read-only analysis and CLIs
   prototype/       index.html data.json finland.geojson  approved map look — plain HTML/JS,
                                                           source of truth for palette/camera/
                                                           interaction; port into React below
-  web/                                                  Vite + React + TS + Tailwind app (scaffolded)
+  web/                                                  Vite + React + TS + Tailwind app
     index.html
     src/
-      main.tsx  App.tsx
-      components/Map.tsx  PeriodSummary.tsx  RouteDetails.tsx  DelayTrends.tsx  ...
-      lib/colors.ts  lib/mapStyle.ts  lib/types.ts  lib/period.ts  lib/trends.ts
-      i18n/en.ts  i18n/fi.ts  i18n/format.ts  i18n/index.tsx   every visitor-facing word (see Languages)
+      main.tsx  App.tsx  index.css
+      components/      cards, Map, pop-ups, journey, chrome (module map in Architecture)
+      components/phone/  phone shell: top bar, dock, sheets, peek, legend pill, journey charts
+      lib/             pure logic, map helpers, state helpers
+      i18n/            en.ts fi.ts format.ts index.tsx      every visitor-facing word (see Languages)
+      assets/logos/    partner logo PNGs (+ src/ originals), made by scripts/make_logos.py
+    public/            favicon.svg, favicon-32.png, apple-touch-icon.png
     public/data/     generated by scripts/build_data.py (see Data contract); finland.geojson is static
     vite.config.ts  tsconfig*.json                        no tailwind.config.ts: Tailwind v4
                                                           is CSS-first config (@import
