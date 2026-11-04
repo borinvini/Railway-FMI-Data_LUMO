@@ -15,3 +15,6 @@ data/raw/*.parquet
 .DS_Store
 Thumbs.db
 data/derived/cache/
+
+# Local notes and design write-ups (kept out of the repo)
+docs/
