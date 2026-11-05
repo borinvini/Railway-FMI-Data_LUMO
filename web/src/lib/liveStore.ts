@@ -10,7 +10,11 @@ let current = 0
 
 export function setLiveKm(km: number): void {
   current = km
-  listeners.forEach((fn) => fn(km))
+  // Called from the map's animation loop and its effect cleanup: a chart that fails to draw must not
+  // take the map (and with it the whole page) down.
+  listeners.forEach((fn) => {
+    try { fn(km) } catch (e) { console.error(e) }
+  })
 }
 
 /** Subscribe (called once at once with the current value); returns the unsubscribe function. */

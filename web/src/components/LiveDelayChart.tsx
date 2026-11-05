@@ -47,7 +47,9 @@ export default function LiveDelayChart({ profile, chartHeight = 150, title = tru
             const { chart: ch } = c
             const area = ch.chartArea
             const y = ch.scales.y
-            if (!area || !y) return 'transparent'
+            // A chart that has just been taken off the page has a zero-height area: the band stops
+            // would divide by zero, and addColorStop throws on NaN.
+            if (!area || !y || !(area.bottom - area.top > 0)) return 'transparent'
             const g = ch.ctx.createLinearGradient(0, area.bottom, 0, area.top)
             const at = (v: number) => Math.min(1, Math.max(0, (area.bottom - y.getPixelForValue(v)) / (area.bottom - area.top)))
             const band = (minutes: number) => {
