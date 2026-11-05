@@ -199,8 +199,8 @@ export default function App() {
   }, [connections])
 
   const routeResult = useMemo(
-    () => (routeStart && routeEnd ? findRoutes(patterns, routeStart.code, routeEnd.code, periodPick, years) : null),
-    [patterns, routeStart, routeEnd, periodPick, years],
+    () => (routeStart && routeEnd ? findRoutes(patterns, routeStart.code, routeEnd.code, periodPick, years, coords) : null),
+    [patterns, routeStart, routeEnd, periodPick, years, coords],
   )
   const routeHighlight = useMemo(
     () => (routeStart && routeEnd && routeResult ? toHighlight(routeResult, routeStart.code, routeEnd.code, coords) : null),

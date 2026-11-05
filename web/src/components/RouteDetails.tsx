@@ -1,7 +1,8 @@
 import { BarController, BarElement, CategoryScale, Chart, LinearScale, Tooltip } from 'chart.js'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLang } from '../i18n'
 import type { Period } from '../lib/period'
+import { pathForType } from '../lib/routeFinder'
 import { summarizeRoute, viaStops, type RouteSummary, type StationInfo, type StopPoint } from '../lib/routeStats'
 import { combineServices, seasonal } from '../lib/trends'
 import type { ConditionDef, RoutePath, RouteStatsFile, RouteTrendsFile, StationFeature } from '../lib/types'
@@ -58,6 +59,15 @@ export default function RouteDetails({ routes, active, onActive, startName, endN
   const names = useMemo(() => new Map([...info].map(([code, i]) => [code, i.name])), [info])
   const route = routes[active]
 
+  // The picked train type belongs to one route: switching route (or pair) goes back to all trains.
+  const [typePick, setTypePick] = useState<{ route: RoutePath; type: string } | null>(null)
+  const type = typePick && typePick.route === route ? typePick.type : null
+  const types = useMemo(
+    () => (route ? Object.entries(route.byType).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]) : []),
+    [route],
+  )
+  const shown = useMemo(() => (route && type ? pathForType(route, type) : route), [route, type])
+
   const labels = useMemo(() => {
     const raw = routes.map((r) => {
       const via = viaStops(r, info)
@@ -72,7 +82,7 @@ export default function RouteDetails({ routes, active, onActive, startName, endN
     )
   }, [routes, info, t])
 
-  const summary = useMemo(() => (stats && route ? summarizeRoute(route, stats, names) : null), [stats, route, names])
+  const summary = useMemo(() => (stats && shown ? summarizeRoute(shown, stats, names) : null), [stats, shown, names])
 
   // Esc closes just this pop-up: capture on window so the page-wide Esc handler (which would
   // also deselect a station) never sees it.
@@ -114,7 +124,7 @@ export default function RouteDetails({ routes, active, onActive, startName, endN
         </h2>
         <div className="mt-0.5 text-[15px] text-(--card-ink-2)">
           {routes.length > 1 ? t.route.routeOf(active + 1, routes.length) : ''}
-          {labels[active]}, {t.trains(route.trains)}, {period}
+          {labels[active]}, {type ? t.route.typeTrains(type, shown.trains) : t.trains(route.trains)}, {period}
         </div>
 
         {routes.length > 1 && (
@@ -153,6 +163,39 @@ export default function RouteDetails({ routes, active, onActive, startName, endN
                 {t.route.tab(i + 1, labels[i], r.trains)}
               </button>
             ))}
+          </div>
+        )}
+
+        {types.length > 1 && (
+          <div role="group" aria-label={t.route.typesAria} className="mt-3 flex flex-wrap gap-2">
+            {[null, ...types.map(([code]) => code)].map((code) => {
+              const on = code === type
+              const n = code === null ? route.trains : route.byType[code]
+              return (
+                <button
+                  key={code ?? 'all'}
+                  type="button"
+                  aria-pressed={on}
+                  title={code === null ? undefined : t.trainType(code)}
+                  onClick={() => setTypePick(code === null ? null : { route, type: code })}
+                  className={`flex min-h-11 cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1 text-[15px] ${
+                    on
+                      ? 'border-(--card-ink) bg-(--card-ink) text-white'
+                      : 'border-[rgba(0,47,108,0.3)] text-(--card-ink-2) hover:bg-[rgba(0,47,108,0.1)]'
+                  }`}
+                >
+                  {code === null ? (
+                    <span>{t.route.typeAll}</span>
+                  ) : (
+                    <>
+                      <span className="font-board text-lg leading-none font-semibold">{code}</span>
+                      <span>{t.trainType(code)}</span>
+                    </>
+                  )}
+                  <span className={on ? 'text-white/75' : 'text-(--card-ink-3)'}>{f.int(n)}</span>
+                </button>
+              )
+            })}
           </div>
         )}
 
@@ -218,7 +261,7 @@ export default function RouteDetails({ routes, active, onActive, startName, endN
             <p className="m-0 mb-2 text-[15px] text-(--card-ink-2)">{t.route.runIntro}</p>
             <ArrivalSplit onTime={summary.onTimePct} minor={summary.minorPct} major={summary.majorPct} />
 
-            {trends && <OverTime trends={trends} route={route} pick={periodPick} />}
+            {trends && <OverTime trends={trends} route={shown} pick={periodPick} />}
 
             {conditionDefs && <WeatherSection weather={summary.weather} defs={conditionDefs} period={period} />}
 
