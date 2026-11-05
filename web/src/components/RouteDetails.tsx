@@ -311,7 +311,7 @@ function OverTime({ trends, route, pick }: { trends: RouteTrendsFile; route: Rou
   const year = pick.kind === 'year' ? pick.year : null
   const { t } = useLang()
   const series = useMemo(() => combineServices(trends, route.sources), [trends, route])
-  const bySeason = useMemo(() => seasonal(trends.months, series, year), [trends, series, year])
+  const bySeason = useMemo(() => seasonal(trends.months, series, pick), [trends, series, pick])
   if (series.avg.filter((v) => v !== null).length < 6) return null
   return (
     <>
@@ -319,7 +319,7 @@ function OverTime({ trends, route, pick }: { trends: RouteTrendsFile; route: Rou
       <p className="m-0 mb-2 text-[15px] text-(--card-ink-2)">{t.route.overIntro(pick)}</p>
       <MonthlyLine months={trends.months} avg={series.avg} period={pick} height={200} ariaLabel={t.route.overAria} />
       <p className="m-0 mt-3 mb-1 text-[15px] text-(--card-ink-2)">{t.route.seasonIntro(year)}</p>
-      <SeasonBars avg={bySeason.avg} height={170} ariaLabel={t.route.seasonAria} />
+      <SeasonBars avg={bySeason.avg} height={170} ariaLabel={t.route.seasonAria} mark={pick.kind === 'month' ? pick.month : undefined} />
     </>
   )
 }

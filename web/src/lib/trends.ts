@@ -1,4 +1,12 @@
+import type { Period } from './period'
 import type { RouteTrendsFile } from './types'
+
+/** Which points of a month-by-month line get a mark: the picked calendar month in every year. */
+export function monthMarks(months: string[], p: Period): boolean[] {
+  if (p.kind !== 'month') return months.map(() => false)
+  const mm = String(p.month).padStart(2, '0')
+  return months.map((m) => m.slice(5, 7) === mm)
+}
 
 /** Delay per month: average minutes late (null = no trains) and the weight behind it (trains or
  *  arrivals). Index-aligned with a list of "YYYY-MM" months. */
@@ -28,9 +36,10 @@ export function combineServices(file: RouteTrendsFile, services: { id: string }[
   return { avg, n }
 }
 
-/** One value per calendar month (January...December), weighted: pooled over all years, or only the
- *  months of `year` when one is picked. */
-export function seasonal(months: string[], series: Series, year: number | null = null): { avg: (number | null)[]; n: number[] } {
+/** One value per calendar month (January...December), weighted: only the months of the picked
+ *  year, or pooled over all years for any other pick (a picked month is itself pooled). */
+export function seasonal(months: string[], series: Series, p: Period): { avg: (number | null)[]; n: number[] } {
+  const year = p.kind === 'year' ? p.year : null
   const sum = new Array<number>(12).fill(0)
   const total = new Array<number>(12).fill(0)
   months.forEach((m, i) => {

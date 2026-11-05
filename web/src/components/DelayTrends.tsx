@@ -25,7 +25,7 @@ export default function DelayTrends({ summary, period, onPeriod, onClose }: Dela
   // The through-the-year bars cover one year when a year is picked; otherwise every year pooled.
   const year = period.kind === 'year' ? period.year : null
   const series = useMemo(() => ({ avg: summary.trend.avg, n: summary.trend.arrivals }), [summary])
-  const bySeason = useMemo(() => seasonal(summary.months, series, year), [summary, series, year])
+  const bySeason = useMemo(() => seasonal(summary.months, series, period), [summary, series, period])
   const byYear = useMemo(() => yearly(summary.months, series), [summary, series])
 
   // Esc closes just this pop-up: capture on window so the page-wide Esc handler never sees it.
@@ -97,7 +97,7 @@ export default function DelayTrends({ summary, period, onPeriod, onClose }: Dela
 
         <h3 className="font-board mt-6 mb-1 text-[22px] font-semibold">{t.trends.seasonTitle}</h3>
         <p className="m-0 mb-2 text-[15px] text-(--card-ink-2)">{t.trends.seasonIntro(year)}</p>
-        <SeasonBars avg={bySeason.avg} ariaLabel={t.trends.seasonAria(year)} />
+        <SeasonBars avg={bySeason.avg} ariaLabel={t.trends.seasonAria(year)} mark={period.kind === 'month' ? period.month : undefined} />
 
         {takeaways.map((line) => (
           <p key={line} className="m-0 mt-2 text-[15px] text-(--card-ink)">{line}</p>

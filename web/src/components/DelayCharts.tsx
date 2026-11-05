@@ -4,6 +4,7 @@ import {
 import { useEffect, useRef } from 'react'
 import { useLang } from '../i18n'
 import type { Period } from '../lib/period'
+import { monthMarks } from '../lib/trends'
 
 Chart.register(BarController, BarElement, CategoryScale, LinearScale, LineController, LineElement, PointElement, Tooltip)
 
@@ -27,9 +28,21 @@ const FADED = 'rgba(0, 47, 108, 0.28)'
 const GRID = 'rgba(0, 47, 108, 0.14)'
 const FONT = 'Barlow, system-ui, sans-serif'
 
+/** The same colour at 30% opacity (for bars that are not the picked month). */
+const fade = (c: string) =>
+  c.startsWith('#')
+    ? `rgba(${parseInt(c.slice(1, 3), 16)}, ${parseInt(c.slice(3, 5), 16)}, ${parseInt(c.slice(5, 7), 16)}, 0.3)`
+    : c.replace('rgb(', 'rgba(').replace(')', ', 0.3)')
+
 /** Segments of the line outside the picked year are drawn faint, so the year stands out. */
 const segmentColor = (months: string[], p: Period) => (ctx: { p1DataIndex: number }) =>
-  p.kind !== 'year' || months[ctx.p1DataIndex].startsWith(String(p.year)) ? BLUE : FADED
+  p.kind === 'all' || (p.kind === 'year' && months[ctx.p1DataIndex].startsWith(String(p.year))) ? BLUE : FADED
+
+/** A month pick: a strong point at that month of every year (the line itself fades). */
+const markPoints = (months: string[], p: Period, radius: number) => {
+  const marks = monthMarks(months, p)
+  return { pointRadius: marks.map((m) => (m ? radius : 0)), pointBackgroundColor: BLUE, pointBorderColor: BLUE }
+}
 
 interface MonthlyLineProps {
   months: string[]
@@ -58,7 +71,7 @@ export function MonthlyLine({ months, avg, period, ariaLabel, height = 220 }: Mo
           data: avg,
           borderColor: BLUE,
           borderWidth: 2,
-          pointRadius: 0,
+          ...markPoints(months, period, 3.5),
           pointHoverRadius: 4,
           pointHoverBackgroundColor: BLUE,
           tension: 0.25,
@@ -116,11 +129,13 @@ interface SeasonBarsProps {
   avg: (number | null)[]
   ariaLabel: string
   height?: number
+  /** A picked calendar month (1-12): its bar stays strong while the others fade. */
+  mark?: number
 }
 
 /** Twelve bars, one per calendar month: when in the year trains run later. The four latest months
  *  are picked out in a red scale (5.0 min = light red, 13.8 min = crimson); below 5.0 min, and all other months, stay blue. */
-export function SeasonBars({ avg, ariaLabel, height = 200 }: SeasonBarsProps) {
+export function SeasonBars({ avg, ariaLabel, height = 200, mark }: SeasonBarsProps) {
   const { t, f } = useLang()
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -136,7 +151,10 @@ export function SeasonBars({ avg, ariaLabel, height = 200 }: SeasonBarsProps) {
         .slice(0, 4)
         .map((m) => m.i),
     )
-    const colors = avg.map((v, i) => (v !== null && v >= RED_LOW && topMonths.has(i) ? redFor(v) : BLUE))
+    const colors = avg.map((v, i) => {
+      const c = v !== null && v >= RED_LOW && topMonths.has(i) ? redFor(v) : BLUE
+      return mark === undefined || mark === i + 1 ? c : fade(c)
+    })
     const chart = new Chart(canvas, {
       type: 'bar',
       data: {
@@ -177,7 +195,7 @@ export function SeasonBars({ avg, ariaLabel, height = 200 }: SeasonBarsProps) {
       },
     })
     return () => chart.destroy()
-  }, [avg, t, f])
+  }, [avg, mark, t, f])
 
   return (
     <div className="relative" style={{ height }}>
@@ -202,7 +220,7 @@ export function Sparkline({ months, avg, period }: { months: string[]; avg: (num
           data: avg,
           borderColor: BLUE,
           borderWidth: 1.75,
-          pointRadius: 0,
+          ...markPoints(months, period, 2.5),
           tension: 0.25,
           segment: { borderColor: segmentColor(months, period) },
         }],
