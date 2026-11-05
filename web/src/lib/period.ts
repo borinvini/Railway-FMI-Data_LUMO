@@ -26,9 +26,9 @@ export function monthsOfScope(months: string[], scope: string): number[] {
   return out
 }
 
-/** The period Presentation mode runs in: a picked year stays, a picked month goes back to By year /
- *  All years (the spec: Presentation start resets the mode to By year). */
-export const presentationPeriod = (p: Period): Period => (p.kind === 'month' ? ALL : p)
+/** What the page opens on, and what Reset view and the idle reset return to: By month, on the
+ *  current calendar month (the owner's choice: "what is November like?"). */
+export const defaultPeriod = (now: Date = new Date()): Period => ({ kind: 'month', month: now.getMonth() + 1 })
 
 const span = (years: number[]) => (years.length === 1 ? String(years[0]) : `${years[0]}–${years[years.length - 1]}`)
 

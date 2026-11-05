@@ -31,7 +31,7 @@ import { PRESENT } from './lib/presentation'
 import { buildLiveRoute, buildTimeline, type LiveTimeline } from './lib/liveTrain'
 import { buildDelayProfile, buildLiveProfile } from './lib/liveProfile'
 import { routeStationValues, routeWeatherPins, summarizeRoute, type StationValue } from './lib/routeStats'
-import { ALL, periodLabel, periodShort, presentationPeriod, scopeOf, type Period } from './lib/period'
+import { defaultPeriod, periodLabel, periodShort, scopeOf, type Period } from './lib/period'
 import { useLang } from './i18n'
 import type { ConnectionFeature, EmsStationFile, FinlandGeoJSON, PredictorFile, RoutePattern, RouteStatsFile, RouteTrendsFile, StationFeature, StationStats, SummaryFile, WeatherPin } from './lib/types'
 
@@ -53,8 +53,8 @@ export default function App() {
   // Which highlighted route's details pop-up is open (index into the route result), if any.
   const [detailIndex, setDetailIndex] = useState<number | null>(null)
   // The picked period (all years, a year, or a month over all years). Every number and colour on the
-  // page follows it.
-  const [periodPick, setPeriodPick] = useState<Period>(ALL)
+  // page follows it. Opens By month, on the current month.
+  const [periodPick, setPeriodPick] = useState<Period>(() => defaultPeriod())
   const [trendsOpen, setTrendsOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
   // Lazy files, loaded the first time they are needed and kept: a year's station figures, a period's
@@ -335,10 +335,9 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [live])
 
-  // Presentation mode starts from a clean map: no journey, selection, route or open pop-up. A picked
-  // year stays; a picked month goes back to By year / All years.
+  // Presentation mode starts from a clean map: no journey, selection, route or open pop-up (the picked
+  // period stays).
   const startPresenting = useCallback(() => {
-    setPeriodPick(presentationPeriod)
     setLive(null)
     setSelected(null)
     setRouteStart(null)
@@ -423,7 +422,7 @@ export default function App() {
     setTrendsOpen(false)
     setAboutOpen(false)
     setPredictorOpen(false)
-    setPeriodPick(ALL)
+    setPeriodPick(defaultPeriod())
     setSheet(null)
     setResetSignal((n) => n + 1)
   }, [])

@@ -1,5 +1,5 @@
 import { useLang } from '../i18n'
-import { ALL, type Period } from '../lib/period'
+import { ALL, defaultPeriod, type Period } from '../lib/period'
 
 interface PeriodPickerProps {
   years: number[]
@@ -27,7 +27,7 @@ export default function PeriodPicker({
     <div className={className}>
       <div role="group" aria-label={t.summary.modeGroup} className="mb-2 flex rounded-full border border-[rgba(0,47,108,0.3)] p-[3px]">
         <ModeButton active={!byMonth} onClick={() => byMonth && onPeriod(ALL)}>{t.summary.byYear}</ModeButton>
-        <ModeButton active={byMonth} onClick={() => !byMonth && onPeriod({ kind: 'month', month: new Date().getMonth() + 1 })}>
+        <ModeButton active={byMonth} onClick={() => !byMonth && onPeriod(defaultPeriod())}>
           {t.summary.byMonth}
         </ModeButton>
       </div>

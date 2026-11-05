@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { makeFmt } from '../i18n/format'
-import { ALL, monthsOfScope, periodLabel, periodShort, presentationPeriod, samePeriod, scopeOf, type Period } from './period'
+import { ALL, defaultPeriod, monthsOfScope, periodLabel, periodShort, samePeriod, scopeOf, type Period } from './period'
 
 const YEARS = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
 const jan: Period = { kind: 'month', month: 1 }
@@ -41,13 +41,10 @@ describe('monthsOfScope', () => {
   })
 })
 
-describe('presentationPeriod', () => {
-  it('drops a picked month, back to By year / All years', () => {
-    expect(presentationPeriod(jan)).toEqual(ALL)
-  })
-  it('keeps a picked year and all years', () => {
-    expect(presentationPeriod({ kind: 'year', year: 2021 })).toEqual({ kind: 'year', year: 2021 })
-    expect(presentationPeriod(ALL)).toEqual(ALL)
+describe('defaultPeriod', () => {
+  it('opens By month, on the current calendar month', () => {
+    expect(defaultPeriod(new Date(2026, 10, 5))).toEqual({ kind: 'month', month: 11 })
+    expect(defaultPeriod(new Date(2026, 0, 31))).toEqual({ kind: 'month', month: 1 })
   })
 })
 
