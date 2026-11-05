@@ -838,6 +838,21 @@ def subset_year(events: pd.DataFrame, runs: pd.DataFrame, year: int | None):
     return events[events["year"] == year], runs[runs["year"] == year]
 
 
+def calendar_month(month_col: pd.Series) -> np.ndarray:
+    """1-12 from a "YYYY-MM" column. On a categorical only the categories are parsed (the event
+    frame has 48 M rows and 96 categories)."""
+    if isinstance(month_col.dtype, pd.CategoricalDtype):
+        per_cat = np.array([int(str(c)[5:7]) for c in month_col.cat.categories], dtype="int8")
+        return per_cat[month_col.cat.codes.to_numpy()]
+    return month_col.astype(str).str.slice(5, 7).astype("int8").to_numpy()
+
+
+def subset_month(events: pd.DataFrame, runs: pd.DataFrame, month: int):
+    """(events, runs) of one calendar month (1-12) pooled over every year, split by departure date
+    like `subset_year`."""
+    return events[calendar_month(events["month"]) == month], runs[calendar_month(runs["month"]) == month]
+
+
 # Weather stations the parquet uses that appear in neither EMS CSV. Coordinates from FMI's open
 # station list (opendata.fmi.fi, fmi::ef::stations), like the HMK override for a train station.
 EMS_COORD_OVERRIDES = {
@@ -950,12 +965,19 @@ def ems_weather_summary(events: pd.DataFrame) -> dict:
     months = sorted(events["month"].astype(str).unique())
     dates_by_year = events.groupby("year")["departureDate"].nunique().to_dict()
     day_counts = {"all": int(sum(dates_by_year.values())), **{str(y): int(n) for y, n in dates_by_year.items()}}
+    # Calendar months pooled over the years ("m01".."m12"), like the year scopes.
+    dates = pd.Series(events["departureDate"].astype(str).unique())
+    for m, n in dates.groupby(dates.str.slice(5, 7)).size().items():
+        day_counts[f"m{m}"] = int(n)
+    frame["calMonth"] = frame["month"].str.slice(5, 7)
 
     stations: dict[str, dict] = {}
     for name, g in frame.groupby("closest_ems", sort=True):
         scopes = {"all": _ems_tiles(g, day_counts["all"])}
         for y, gy in g.groupby("year"):
             scopes[str(y)] = _ems_tiles(gy, day_counts[str(y)])
+        for m, gm in g.groupby("calMonth"):
+            scopes[f"m{m}"] = _ems_tiles(gm, day_counts[f"m{m}"])
         t = g.groupby("month")["Air temperature"].agg(["min", "mean", "max"])
         snow_m = g.groupby("month")["snow"].max()
         gust_m = g.groupby("month")["Gust speed"].max()

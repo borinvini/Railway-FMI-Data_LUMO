@@ -76,7 +76,10 @@ def _haversine_km(lat1, lon1, lat2, lon2) -> float:
     return 2 * 6371 * math.asin(math.sqrt(a))
 
 
-def scope_name(year: int | None) -> str:
+def scope_name(year: int | None = None, month: int | None = None) -> str:
+    """Period key: "all", a year ("2021") or a calendar month over all years ("m01")."""
+    if month is not None:
+        return f"m{month:02d}"
     return "all" if year is None else str(year)
 
 
@@ -286,18 +289,28 @@ def build_connections_payload(edges, coords_by_code: dict, keep: set | None = No
 def build_route_patterns(runs, years: list[int], min_runs: int) -> list[dict]:
     """One entry per distinct full stop sequence (every station the train stops at, passenger or
     not, so a drawn path follows the real track), with the number of runs per train type per year
-    (`runsByType[type]` aligns with `years`). Patterns with fewer than `min_runs` runs in total
-    are left out. Sorted busiest first, ties by the stop list, so the bytes are stable."""
+    (`runsByType[type]` aligns with `years`), and per calendar month over all years
+    (`runsByMonth[type]`, 12 numbers, January first). Patterns with fewer than `min_runs` runs in
+    total are left out. Sorted busiest first, ties by the stop list, so the bytes are stable."""
     counts = runs.groupby(["stopSequence", "trainType", "year"], sort=False).size()
     by_seq: dict[tuple, dict[str, list[int]]] = {}
     for (seq, t, y), n in counts.items():
         by_type = by_seq.setdefault(seq, {})
         by_type.setdefault(t, [0] * len(years))[years.index(int(y))] = int(n)
+    cal = runs.assign(calMonth=routes_lib.calendar_month(runs["month"]))
+    month_counts = cal.groupby(["stopSequence", "trainType", "calMonth"], sort=False).size()
+    by_seq_month: dict[tuple, dict[str, list[int]]] = {}
+    for (seq, t, m), n in month_counts.items():
+        by_seq_month.setdefault(seq, {}).setdefault(t, [0] * 12)[int(m) - 1] = int(n)
     payload = []
     for seq, by_type in by_seq.items():
         if sum(sum(v) for v in by_type.values()) < min_runs:
             continue
-        payload.append({"stops": list(seq), "runsByType": {t: by_type[t] for t in sorted(by_type)}})
+        payload.append({
+            "stops": list(seq),
+            "runsByType": {t: by_type[t] for t in sorted(by_type)},
+            "runsByMonth": {t: by_seq_month[seq][t] for t in sorted(by_type)},
+        })
     payload.sort(key=lambda p: (-sum(sum(v) for v in p["runsByType"].values()), p["stops"]))
     return payload
 
@@ -485,14 +498,21 @@ def main() -> int:
     arrivals = routes_lib.prepare_arrivals(events)
     log(f"{len(arrivals):,} arrivals prepared (weather baseline + conditions)")
 
-    # --- each scope: the whole period, then each year ---------------------------------------------
+    # --- each scope: the whole period, each year, then each calendar month over all years ----------
     headlines: dict[str, dict] = {}
     all_station_stats: dict | None = None
-    for year in [None] + years:
-        name = scope_name(year)
-        ev, rs = routes_lib.subset_year(events, runs, year)
-        arr = arrivals if year is None else arrivals[arrivals["year"] == year]
-        stations = stations_all if year is None else routes_lib.station_summary(ev, rs, station_meta)
+    arrival_month = routes_lib.calendar_month(arrivals["month"])
+    periods = [(None, None)] + [(y, None) for y in years] + [(None, m) for m in range(1, 13)]
+    for year, month in periods:
+        name = scope_name(year, month)
+        if month is not None:
+            ev, rs = routes_lib.subset_month(events, runs, month)
+            arr = arrivals[arrival_month == month]
+        else:
+            ev, rs = routes_lib.subset_year(events, runs, year)
+            arr = arrivals if year is None else arrivals[arrivals["year"] == year]
+        whole = year is None and month is None
+        stations = stations_all if whole else routes_lib.station_summary(ev, rs, station_meta)
 
         st_arr = routes_lib.weather_arrivals(arr, rs, by=())
         st_cond = routes_lib.condition_stats(st_arr, ["stationShortCode"])
@@ -508,7 +528,7 @@ def main() -> int:
         scope_cond = routes_lib.condition_stats(st_arr, [])[()]
         headlines[name] = build_headline(ev, rs, n_stations, scope_cond)
 
-        if year is None:
+        if whole:
             all_station_stats = station_stats_payload
         else:
             write_json(OUT_DIR / "scope" / name / "stations_stats.json", station_stats_payload, sizes)
