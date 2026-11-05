@@ -1,3 +1,4 @@
+import type { Period } from './period'
 import type { RouteHighlight, RoutePath, RoutePattern } from './types'
 
 export interface RouteResult {
@@ -8,18 +9,25 @@ export interface RouteResult {
   totalTrains: number
 }
 
-/** Trains in the picked period: one year (index into `SummaryFile.years`), or all years when null. */
-export const trainsIn = (perYear: number[], yearIndex: number | null): number =>
-  yearIndex === null ? perYear.reduce((a, b) => a + b, 0) : (perYear[yearIndex] ?? 0)
+const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0)
+
+/** Trains of one type on one pattern in the picked period. `years` is `SummaryFile.years`, which
+ *  `runsByType` is aligned with; a month reads `runsByMonth` (January first). */
+export function trainsIn(pattern: RoutePattern, type: string, p: Period, years: number[]): number {
+  const perYear = pattern.runsByType[type] ?? []
+  if (p.kind === 'year') return perYear[years.indexOf(p.year)] ?? 0
+  if (p.kind === 'month') return pattern.runsByMonth?.[type]?.[p.month - 1] ?? 0
+  return sum(perYear)
+}
 
 /**
  * Direct trains that stop at `start` and then, later in the same run, at `end`. Trains run in
  * both directions, so each direction appears as its own pattern in the data -- no special
- * handling needed for reversed pairs. `yearIndex` picks the year to count trains for (null = all
- * years); a way that no train used in that year is left out. Returns null when there is no such
- * train.
+ * handling needed for reversed pairs. `period` picks the period to count trains for (`years` =
+ * `SummaryFile.years`); a way that no train used in that period is left out. Returns null when
+ * there is no such train.
  */
-export function findRoutes(patterns: RoutePattern[], start: string, end: string, yearIndex: number | null = null): RouteResult | null {
+export function findRoutes(patterns: RoutePattern[], start: string, end: string, period: Period, years: number[]): RouteResult | null {
   const paths = new Map<string, RoutePath>()
   const typeRuns = new Map<string, number>()
 
@@ -29,8 +37,8 @@ export function findRoutes(patterns: RoutePattern[], start: string, end: string,
     const j = p.stops.indexOf(end, i + 1)
     if (j < 0) continue
 
-    const counts = Object.entries(p.runsByType)
-      .map(([type, perYear]) => [type, trainsIn(perYear, yearIndex)] as const)
+    const counts = Object.keys(p.runsByType)
+      .map((type) => [type, trainsIn(p, type, period, years)] as const)
       .filter(([, n]) => n > 0)
     if (counts.length === 0) continue
 
@@ -100,21 +108,22 @@ export function distanceKm(a: { lat: number; lon: number }, b: { lat: number; lo
  * (weighted by how many runs followed it, so common services come up more often), then two of
  * its passenger stops (start before end) at least MIN_DISTANCE_KM apart as the crow flies, so
  * the route is worth looking at -- "3 stops apart" was tried first but is only a few km in the
- * dense Helsinki area. The pair always has a direct train (in the picked year, when `yearIndex` is
- * set), so the finder never answers "no direct train" for it. Tries a few times to avoid repeating `avoid` (the pair currently
- * shown). `stations` maps every passenger station code to its coordinates. Null only if no
+ * dense Helsinki area. The pair always has a direct train in the picked period, so the finder
+ * never answers "no direct train" for it. Tries a few times to avoid repeating `avoid` (the pair
+ * currently shown). `stations` maps every passenger station code to its coordinates. Null only if no
  * train in the data covers that distance.
  */
 export function pickRandomRoute(
   patterns: RoutePattern[],
   stations: Map<string, { lat: number; lon: number }>,
-  avoid?: { start: string; end: string } | null,
-  yearIndex: number | null = null,
+  avoid: { start: string; end: string } | null,
+  period: Period,
+  years: number[],
 ): { start: string; end: string } | null {
   const candidates = patterns
     .map((p) => ({
       stops: p.stops.filter((c) => stations.has(c)),
-      runs: Object.values(p.runsByType).reduce((a, perYear) => a + trainsIn(perYear, yearIndex), 0),
+      runs: Object.keys(p.runsByType).reduce((a, type) => a + trainsIn(p, type, period, years), 0),
     }))
     .filter((c) => c.stops.length >= 2 && c.runs > 0)
   const totalRuns = candidates.reduce((sum, c) => sum + c.runs, 0)

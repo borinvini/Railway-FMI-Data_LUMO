@@ -116,6 +116,8 @@ export type FinlandGeoJSON = GeoJSON.FeatureCollection<GeoJSON.Geometry, { kind:
 export interface RoutePattern {
   stops: string[]
   runsByType: Record<string, number[]>
+  /** Runs per train type per calendar month over all years, January first (12 numbers). */
+  runsByMonth: Record<string, number[]>
 }
 
 /** What the route finder highlights on the map: one [lon, lat] path per distinct way trains
