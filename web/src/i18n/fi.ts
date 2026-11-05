@@ -39,6 +39,10 @@ export const fi = (f: Fmt): Dict => {
       tapHint: (period) => `${period}. Napauta mitä tahansa asemaa kartalla.`,
       allYearsChip: 'Kaikki vuodet',
       yearGroup: 'Vuosi',
+      monthGroup: 'Kuukausi',
+      modeGroup: 'Näytä luvut',
+      byYear: 'Vuosittain',
+      byMonth: 'Kuukausittain',
       trainsRan: 'junaa kulki',
       onTime: 'ajallaan (enintään 5 min myöhässä)',
       trendsLink: 'Myöhästymiset vuosien mittaan – ja sää',
@@ -169,7 +173,8 @@ export const fi = (f: Fmt): Dict => {
       veryLate: 'Paljon myöhässä (yli 15 min)',
       noArrivals: 'Ei saapumistietoja.',
       overTitle: 'Vuosien mittaan',
-      overIntro: (year) => `Tämän reitin junien tyypillinen myöhästyminen kuukausittain${year !== null ? `; vuosi ${year} on korostettu` : ''}.`,
+      overIntro: (p) =>
+        `Tämän reitin junien tyypillinen myöhästyminen kuukausittain${p.kind === 'year' ? `; vuosi ${p.year} on korostettu` : p.kind === 'month' ? `; jokainen ${f.months[p.month - 1]} on korostettu` : ''}.`,
       overAria: 'Viivakaavio tämän reitin tyypillisestä myöhästymisestä kuukausittain',
       seasonIntro: (year) => (year === null ? 'Ja vuoden kierto, kaikki vuodet yhdessä.' : `Ja vuosi ${year} kuukausittain.`),
       seasonAria: 'Pylväskaavio tämän reitin tyypillisestä myöhästymisestä kalenterikuukausittain',
@@ -193,7 +198,8 @@ export const fi = (f: Fmt): Dict => {
 
     trends: {
       title: 'Myöhästymiset vuosien mittaan',
-      intro: (period, year) => `Kaikki kaukojunat, ${period}.${year !== null ? ` Vuosi ${year} on korostettu alla.` : ''}`,
+      intro: (period, p) =>
+        `Kaikki kaukojunat, ${period}.${p.kind === 'year' ? ` Vuosi ${p.year} on korostettu alla.` : p.kind === 'month' ? ` Jokainen ${f.months[p.month - 1]} on korostettu alla.` : ''}`,
       monthTitle: 'Kuukausittain',
       monthIntro: 'Tyypillinen myöhästyminen minuutteina junien saapuessa, kuukausittain.',
       monthAria: 'Viivakaavio tyypillisestä myöhästymisestä kuukausittain',

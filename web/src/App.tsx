@@ -31,16 +31,17 @@ import { PRESENT } from './lib/presentation'
 import { buildLiveRoute, buildTimeline, type LiveTimeline } from './lib/liveTrain'
 import { buildDelayProfile, buildLiveProfile } from './lib/liveProfile'
 import { routeStationValues, routeWeatherPins, summarizeRoute, type StationValue } from './lib/routeStats'
-import { periodLabel, scopeOf } from './lib/period'
+import { ALL, periodLabel, periodShort, scopeOf, type Period } from './lib/period'
 import { useLang } from './i18n'
 import type { ConnectionFeature, EmsStationFile, FinlandGeoJSON, PredictorFile, RoutePattern, RouteStatsFile, RouteTrendsFile, StationFeature, StationStats, SummaryFile, WeatherPin } from './lib/types'
 
 const NO_VALUES = new Map<string, StationValue>()
 // A kiosk left alone this long goes back to the start view (see the idle effect in App).
 const IDLE_RESET_MS = 90_000
+const NO_YEARS: number[] = []
 
 export default function App() {
-  const { t, setLang } = useLang()
+  const { t, f, setLang } = useLang()
   // The stations of the whole period (stations.json); `stations` below swaps in a picked year's figures.
   const [baseStations, setBaseStations] = useState<StationFeature[]>([])
   const [connections, setConnections] = useState<ConnectionFeature[]>([])
@@ -51,8 +52,9 @@ export default function App() {
   const [routeEnd, setRouteEnd] = useState<StationFeature | null>(null)
   // Which highlighted route's details pop-up is open (index into the route result), if any.
   const [detailIndex, setDetailIndex] = useState<number | null>(null)
-  // The picked year (null = all years). Every number and colour on the page follows it.
-  const [year, setYear] = useState<number | null>(null)
+  // The picked period (all years, a year, or a month over all years). Every number and colour on the
+  // page follows it.
+  const [periodPick, setPeriodPick] = useState<Period>(ALL)
   const [trendsOpen, setTrendsOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
   // Lazy files, loaded the first time they are needed and kept: a year's station figures, a period's
@@ -121,28 +123,31 @@ export default function App() {
   // A different station or route means the open weather pop-up no longer applies.
   useEffect(() => { setWeatherPin(null) }, [selected, routeStart, routeEnd])
 
-  const scope = scopeOf(year)
-  const yearIndex = year === null || !summary ? null : summary.years.indexOf(year)
-  const period = periodLabel(summary?.years ?? null, year) ?? t.allYears
+  const scope = scopeOf(periodPick)
+  const whole = periodPick.kind === 'all'
+  const years = summary?.years ?? NO_YEARS
+  const period = periodLabel(summary?.years ?? null, periodPick, f) ?? t.allYears
+  const periodShortLabel = periodShort(summary?.years ?? null, periodPick, f) ?? t.allYears
 
-  // A picked year's station figures load once; until they arrive the whole-period figures stay.
+  // A picked year's or month's station figures load once; until they arrive the whole-period
+  // figures stay.
   useEffect(() => {
-    if (year === null || yearStations[scope]) return
+    if (whole || yearStations[scope]) return
     let cancelled = false
     fetch(`data/scope/${scope}/stations_stats.json`)
       .then((r) => r.json() as Promise<Record<string, StationStats>>)
       .then((data) => { if (!cancelled) setYearStations((prev) => ({ ...prev, [scope]: data })) })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [year, scope, yearStations])
+  }, [whole, scope, yearStations])
 
-  // The stations as drawn: the whole period's figures, or the picked year's. A station no train
-  // stopped at that year is left out, so it is neither drawn nor offered in the pickers.
+  // The stations as drawn: the whole period's figures, or the picked year's or month's. A station no
+  // train stopped at in that period is left out, so it is neither drawn nor offered in the pickers.
   const stations = useMemo(() => {
     const stats = yearStations[scope]
-    if (year === null || !stats) return baseStations
+    if (whole || !stats) return baseStations
     return baseStations.flatMap((s) => (stats[s.code] ? [{ ...s, ...stats[s.code] }] : []))
-  }, [baseStations, year, scope, yearStations])
+  }, [baseStations, whole, scope, yearStations])
   // A new year gives the selected station and the route ends fresh figures (or drops them).
   useEffect(() => {
     const fresh = (prev: StationFeature | null) => (prev ? stations.find((s) => s.code === prev.code) ?? null : null)
@@ -194,8 +199,8 @@ export default function App() {
   }, [connections])
 
   const routeResult = useMemo(
-    () => (routeStart && routeEnd ? findRoutes(patterns, routeStart.code, routeEnd.code, yearIndex) : null),
-    [patterns, routeStart, routeEnd, yearIndex],
+    () => (routeStart && routeEnd ? findRoutes(patterns, routeStart.code, routeEnd.code, periodPick, years) : null),
+    [patterns, routeStart, routeEnd, periodPick, years],
   )
   const routeHighlight = useMemo(
     () => (routeStart && routeEnd && routeResult ? toHighlight(routeResult, routeStart.code, routeEnd.code, coords) : null),
@@ -291,21 +296,22 @@ export default function App() {
     return buildDelayProfile(stops, live.route.totalKm, values)
   }, [live, routeValues])
 
-  // A random pair of stations a real train connects, in the picked year, other than the pair on show:
-  // the "Random route" button and the presentation show both use it.
+  // A random pair of stations a real train connects, in the picked period, other than the pair on
+  // show: the "Random route" button and the presentation show both use it.
   const pickRandomPair = useCallback(() => {
     const pick = pickRandomRoute(
       patterns,
       new Map(stations.map((s) => [s.code, { lat: s.lat, lon: s.lon }])),
       routeStart && routeEnd ? { start: routeStart.code, end: routeEnd.code } : null,
-      yearIndex,
+      periodPick,
+      years,
     )
     if (!pick) return null
     return {
       start: stations.find((s) => s.code === pick.start) ?? null,
       end: stations.find((s) => s.code === pick.end) ?? null,
     }
-  }, [patterns, stations, routeStart, routeEnd, yearIndex])
+  }, [patterns, stations, routeStart, routeEnd, periodPick, years])
 
   const startLive = useCallback(() => {
     const path = routeResult?.paths[0]
@@ -416,7 +422,7 @@ export default function App() {
     setTrendsOpen(false)
     setAboutOpen(false)
     setPredictorOpen(false)
-    setYear(null)
+    setPeriodPick(ALL)
     setSheet(null)
     setResetSignal((n) => n + 1)
   }, [])
@@ -584,7 +590,7 @@ export default function App() {
         <>
           {!live && (
             <>
-              <PhoneTopBar ref={topRef} period={period} onPeriod={() => setSheet('overview')} showReset={showReset} onReset={resetAll} />
+              <PhoneTopBar ref={topRef} period={periodShortLabel} onPeriod={() => setSheet('overview')} showReset={showReset} onReset={resetAll} />
               <Sheet ref={routeSheetRef} open={sheet === 'route'} label={t.phone.sheetRoute} onClose={() => setSheet(null)} bottom={dockH} top={topH} maxHeight="68dvh">
                 {routeFinder}
               </Sheet>
@@ -593,7 +599,7 @@ export default function App() {
                 {stationPanel && <div className="relative mt-3 border-t border-(--card-line) pt-3">{stationPanel}</div>}
               </Sheet>
               <Sheet ref={overviewSheetRef} open={sheet === 'overview'} label={t.phone.sheetOverview} onClose={() => setSheet(null)} bottom={dockH} top={topH} maxHeight="76dvh">
-                <PeriodSummary summary={summary} year={year} onYear={setYear} onOpenTrends={() => setTrendsOpen(true)} />
+                <PeriodSummary summary={summary} period={periodPick} onPeriod={setPeriodPick} onOpenTrends={() => setTrendsOpen(true)} />
                 <Footer embedded onAbout={() => setAboutOpen(true)} />
               </Sheet>
               {showPeek && routeStart && routeEnd && routeResult && (
@@ -634,7 +640,7 @@ export default function App() {
           the weather chart take the left edge instead. */}
       {!live && (
       <SideColumn>
-        <PeriodSummary summary={summary} year={year} onYear={setYear} onOpenTrends={() => setTrendsOpen(true)} />
+        <PeriodSummary summary={summary} period={periodPick} onPeriod={setPeriodPick} onOpenTrends={() => setTrendsOpen(true)} />
         {routeFinder}
         <StationSelect stations={stations} selected={selected} onSelect={setSelected} />
       </SideColumn>
@@ -721,7 +727,7 @@ export default function App() {
           stats={routeStats}
           loadFailed={statsFailed}
           period={period}
-          year={year}
+          periodPick={periodPick}
           conditionDefs={summary?.conditions ?? null}
           trends={routeTrends}
           onClose={() => setDetailIndex(null)}
@@ -755,7 +761,7 @@ export default function App() {
         />
       )}
 
-      {trendsOpen && summary &&<DelayTrends summary={summary} year={year} onYear={setYear} onClose={() => setTrendsOpen(false)} />}
+      {trendsOpen && summary &&<DelayTrends summary={summary} period={periodPick} onPeriod={setPeriodPick} onClose={() => setTrendsOpen(false)} />}
 
       {aboutOpen && <AboutPage onClose={() => setAboutOpen(false)} />}
 

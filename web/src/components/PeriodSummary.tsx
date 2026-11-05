@@ -1,30 +1,29 @@
 import { useLang } from '../i18n'
-import { periodLabel, scopeOf } from '../lib/period'
+import { periodLabel, scopeOf, type Period } from '../lib/period'
 import type { SummaryFile } from '../lib/types'
 import { Sparkline } from './DelayCharts'
 import FinnishFlag from './FinnishFlag'
-import YearChips from './YearChips'
+import PeriodPicker from './PeriodPicker'
 
 interface PeriodSummaryProps {
   summary: SummaryFile | null
-  /** The picked year; null = all years. */
-  year: number | null
-  onYear: (year: number | null) => void
+  period: Period
+  onPeriod: (p: Period) => void
   /** Open the "How delays changed" pop-up. */
   onOpenTrends: () => void
 }
 
 /**
- * Title card at the top of the left column: what this page is, a year picker
+ * Title card at the top of the left column: what this page is, a period picker (by year or by month)
  * (every number and colour on the page follows it), the period's two headline numbers (set like a
  * departure board) and a small month-by-month delay line that opens the full charts (which also hold
  * the late-trains-in-bad-weather figures). Numbers come from summary.json; until it loads the card
  * shows the title.
  */
-export default function PeriodSummary({ summary, year, onYear, onOpenTrends }: PeriodSummaryProps) {
+export default function PeriodSummary({ summary, period, onPeriod, onOpenTrends }: PeriodSummaryProps) {
   const { t, f } = useLang()
-  const headline = summary?.scopes[scopeOf(year)] ?? null
-  const label = periodLabel(summary?.years ?? null, year) ?? t.allYears
+  const headline = summary?.scopes[scopeOf(period)] ?? null
+  const label = periodLabel(summary?.years ?? null, period, f) ?? t.allYears
   const trainsText = headline ? f.int(headline.trains) : ''
 
   return (
@@ -38,7 +37,7 @@ export default function PeriodSummary({ summary, year, onYear, onOpenTrends }: P
       </div>
 
       {summary && summary.years.length > 1 && (
-        <YearChips years={summary.years} year={year} onYear={onYear} className="mt-3" />
+        <PeriodPicker years={summary.years} period={period} onPeriod={onPeriod} className="mt-3" />
       )}
 
       {headline && (
@@ -64,7 +63,7 @@ export default function PeriodSummary({ summary, year, onYear, onOpenTrends }: P
               onClick={onOpenTrends}
               className="mt-3 block w-full cursor-pointer border-t border-(--card-line) bg-transparent px-0 pt-3 pb-0 text-left text-(--card-ink)"
             >
-              <Sparkline months={summary.months} avg={summary.trend.avg} year={year} />
+              <Sparkline months={summary.months} avg={summary.trend.avg} period={period} />
               <span className="mt-1.5 flex min-h-11 items-center justify-between text-[15px] text-(--card-ink-2)">
                 <span>{t.summary.trendsLink}</span>
                 <span aria-hidden="true" className="text-lg">→</span>

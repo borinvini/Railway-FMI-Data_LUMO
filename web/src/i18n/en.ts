@@ -1,4 +1,5 @@
 import type { Fmt } from './format'
+import type { Period } from '../lib/period'
 import { formatSnow, formatTemp } from '../lib/weatherFormat'
 
 /**
@@ -41,6 +42,10 @@ export const en = (f: Fmt) => ({
     tapHint: (period: string) => `${period}. Tap any station on the map.`,
     allYearsChip: 'All years',
     yearGroup: 'Year',
+    monthGroup: 'Month',
+    modeGroup: 'Show figures',
+    byYear: 'By year',
+    byMonth: 'By month',
     trainsRan: 'trains ran',
     onTime: 'on time (up to 5 min late)',
     trendsLink: 'How delays changed, and the weather',
@@ -167,7 +172,8 @@ export const en = (f: Fmt) => ({
     veryLate: 'Very late (over 15 min)',
     noArrivals: 'No arrival data.',
     overTitle: 'Over the years',
-    overIntro: (year: number | null) => `Typical minutes late for this route's trains, for each month${year !== null ? `; ${year} is picked out` : ''}.`,
+    overIntro: (p: Period) =>
+      `Typical minutes late for this route's trains, for each month${p.kind === 'year' ? `; ${p.year} is picked out` : p.kind === 'month' ? `; every ${f.months[p.month - 1]} is picked out` : ''}.`,
     overAria: 'Line chart of the typical minutes late on this route in each month',
     seasonIntro: (year: number | null) => (year === null ? 'And through the year, with all the years put together.' : `And through ${year}, month by month.`),
     seasonAria: 'Bar chart of the typical minutes late on this route in each calendar month',
@@ -191,7 +197,8 @@ export const en = (f: Fmt) => ({
 
   trends: {
     title: 'How delays changed',
-    intro: (period: string, year: number | null) => `Every long-distance train, ${period}.${year !== null ? ` ${year} is picked out below.` : ''}`,
+    intro: (period: string, p: Period) =>
+      `Every long-distance train, ${period}.${p.kind === 'year' ? ` ${p.year} is picked out below.` : p.kind === 'month' ? ` Every ${f.months[p.month - 1]} is picked out below.` : ''}`,
     monthTitle: 'Month by month',
     monthIntro: 'Typical minutes late when trains arrived, for each month.',
     monthAria: 'Line chart of the typical minutes late in each month',

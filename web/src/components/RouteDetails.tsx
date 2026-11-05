@@ -1,6 +1,7 @@
 import { BarController, BarElement, CategoryScale, Chart, LinearScale, Tooltip } from 'chart.js'
 import { useEffect, useMemo, useRef } from 'react'
 import { useLang } from '../i18n'
+import type { Period } from '../lib/period'
 import { summarizeRoute, viaStops, type RouteSummary, type StationInfo, type StopPoint } from '../lib/routeStats'
 import { combineServices, seasonal } from '../lib/trends'
 import type { ConditionDef, RoutePath, RouteStatsFile, RouteTrendsFile, StationFeature } from '../lib/types'
@@ -31,8 +32,8 @@ interface RouteDetailsProps {
   loadFailed: boolean
   /** What the period is called on screen: "2018–2025" or "2021". */
   period: string
-  /** The picked year (null = all years); the month-by-month line picks it out. */
-  year: number | null
+  /** The picked period; the month-by-month line picks out its year, or its month in every year. */
+  periodPick: Period
   /** Weather condition names from summary.json; null until it has loaded (the section is then skipped). */
   conditionDefs: ConditionDef[] | null
   /** route_trends.json; null while it loads (the "over the years" section waits). */
@@ -48,7 +49,7 @@ const stripAsema = (s: string) => s.replace(/ asema$/, '')
  * late, and a table of the train services that run the route. When several routes are
  * highlighted, tabs switch between them.
  */
-export default function RouteDetails({ routes, active, onActive, startName, endName, stations, stats, loadFailed, period, year, conditionDefs, trends, onClose }: RouteDetailsProps) {
+export default function RouteDetails({ routes, active, onActive, startName, endName, stations, stats, loadFailed, period, periodPick, conditionDefs, trends, onClose }: RouteDetailsProps) {
   const { t, f } = useLang()
   const info = useMemo(
     () => new Map<string, StationInfo>(stations.map((s) => [s.code, { name: stripAsema(s.name), runs: s.runs, lat: s.lat, lon: s.lon }])),
@@ -217,7 +218,7 @@ export default function RouteDetails({ routes, active, onActive, startName, endN
             <p className="m-0 mb-2 text-[15px] text-(--card-ink-2)">{t.route.runIntro}</p>
             <ArrivalSplit onTime={summary.onTimePct} minor={summary.minorPct} major={summary.majorPct} />
 
-            {trends && <OverTime trends={trends} route={route} year={year} />}
+            {trends && <OverTime trends={trends} route={route} pick={periodPick} />}
 
             {conditionDefs && <WeatherSection weather={summary.weather} defs={conditionDefs} period={period} />}
 
@@ -306,7 +307,8 @@ function WeatherSection({ weather, defs, period }: { weather: RouteSummary['weat
 
 /** "Over the years": this route's delay for every month, and for each calendar month pooled over
  *  the years. Built from the saved month-by-month figures of the services on the route. */
-function OverTime({ trends, route, year }: { trends: RouteTrendsFile; route: RoutePath; year: number | null }) {
+function OverTime({ trends, route, pick }: { trends: RouteTrendsFile; route: RoutePath; pick: Period }) {
+  const year = pick.kind === 'year' ? pick.year : null
   const { t } = useLang()
   const series = useMemo(() => combineServices(trends, route.sources), [trends, route])
   const bySeason = useMemo(() => seasonal(trends.months, series, year), [trends, series, year])
@@ -314,8 +316,8 @@ function OverTime({ trends, route, year }: { trends: RouteTrendsFile; route: Rou
   return (
     <>
       <h3 className="font-board mt-6 mb-1 text-[22px] font-semibold">{t.route.overTitle}</h3>
-      <p className="m-0 mb-2 text-[15px] text-(--card-ink-2)">{t.route.overIntro(year)}</p>
-      <MonthlyLine months={trends.months} avg={series.avg} year={year} height={200} ariaLabel={t.route.overAria} />
+      <p className="m-0 mb-2 text-[15px] text-(--card-ink-2)">{t.route.overIntro(pick)}</p>
+      <MonthlyLine months={trends.months} avg={series.avg} period={pick} height={200} ariaLabel={t.route.overAria} />
       <p className="m-0 mt-3 mb-1 text-[15px] text-(--card-ink-2)">{t.route.seasonIntro(year)}</p>
       <SeasonBars avg={bySeason.avg} height={170} ariaLabel={t.route.seasonAria} />
     </>

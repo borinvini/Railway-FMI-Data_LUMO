@@ -1,27 +1,29 @@
 import { useEffect, useMemo } from 'react'
 import { useLang } from '../i18n'
-import { periodLabel, scopeOf } from '../lib/period'
+import { ALL, periodLabel, scopeOf, type Period } from '../lib/period'
 import { seasonal, yearly } from '../lib/trends'
 import type { SummaryFile } from '../lib/types'
 import ConditionList from './ConditionList'
 import { MonthlyLine, SeasonBars } from './DelayCharts'
-import YearChips from './YearChips'
+import PeriodPicker from './PeriodPicker'
 
 interface DelayTrendsProps {
   summary: SummaryFile
-  year: number | null
-  /** Pick a year (or null for all) without closing the pop-up; the page behind follows too. */
-  onYear: (year: number | null) => void
+  period: Period
+  /** Pick a period without closing the pop-up; the page behind follows too. */
+  onPeriod: (p: Period) => void
   onClose: () => void
 }
 
 /**
  * Pop-up in front of the map: how delays changed over the years (one line, a point per month) and
  * through the year (twelve bars, pooled over the years). Same shell and Esc handling as
- * RouteDetails. The picked year is drawn strong on the line and the rest fade.
+ * RouteDetails. The picked year (or month, in every year) is drawn strong on the line.
  */
-export default function DelayTrends({ summary, year, onYear, onClose }: DelayTrendsProps) {
-  const { t } = useLang()
+export default function DelayTrends({ summary, period, onPeriod, onClose }: DelayTrendsProps) {
+  const { t, f } = useLang()
+  // The through-the-year bars cover one year when a year is picked; otherwise every year pooled.
+  const year = period.kind === 'year' ? period.year : null
   const series = useMemo(() => ({ avg: summary.trend.avg, n: summary.trend.arrivals }), [summary])
   const bySeason = useMemo(() => seasonal(summary.months, series, year), [summary, series, year])
   const byYear = useMemo(() => yearly(summary.months, series), [summary, series])
@@ -62,8 +64,8 @@ export default function DelayTrends({ summary, year, onYear, onClose }: DelayTre
     return out
   }, [bySeason, byYear, summary, year, t])
 
-  const label = periodLabel(summary.years, null) ?? t.allYears
-  const conditions = summary.scopes[scopeOf(year)]?.conditions ?? null
+  const label = periodLabel(summary.years, ALL, f) ?? t.allYears
+  const conditions = summary.scopes[scopeOf(period)]?.conditions ?? null
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[rgba(2,6,13,0.55)] p-4 max-md:p-0" onClick={onClose}>
@@ -86,12 +88,12 @@ export default function DelayTrends({ summary, year, onYear, onClose }: DelayTre
         <h2 id="delay-trends-title" className="font-board m-0 pr-10 text-[32px] leading-tight font-semibold">
           {t.trends.title}
         </h2>
-        <p className="m-0 mt-0.5 text-[15px] text-(--card-ink-2)">{t.trends.intro(label, year)}</p>
-        <YearChips years={summary.years} year={year} onYear={onYear} columns="grid-cols-5 sm:grid-cols-10" className="mt-3" />
+        <p className="m-0 mt-0.5 text-[15px] text-(--card-ink-2)">{t.trends.intro(label, period)}</p>
+        <PeriodPicker years={summary.years} period={period} onPeriod={onPeriod} yearColumns="grid-cols-5 sm:grid-cols-10" monthColumns="grid-cols-6 sm:grid-cols-12" className="mt-3 max-w-[560px]" />
 
         <h3 className="font-board mt-5 mb-1 text-[22px] font-semibold">{t.trends.monthTitle}</h3>
         <p className="m-0 mb-2 text-[15px] text-(--card-ink-2)">{t.trends.monthIntro}</p>
-        <MonthlyLine months={summary.months} avg={summary.trend.avg} year={year} ariaLabel={t.trends.monthAria} />
+        <MonthlyLine months={summary.months} avg={summary.trend.avg} period={period} ariaLabel={t.trends.monthAria} />
 
         <h3 className="font-board mt-6 mb-1 text-[22px] font-semibold">{t.trends.seasonTitle}</h3>
         <p className="m-0 mb-2 text-[15px] text-(--card-ink-2)">{t.trends.seasonIntro(year)}</p>
@@ -104,7 +106,7 @@ export default function DelayTrends({ summary, year, onYear, onClose }: DelayTre
         {conditions && (
           <>
             <h3 className="font-board mt-6 mb-1 text-[22px] font-semibold">{t.trends.badWeather}</h3>
-            <ConditionList defs={summary.conditions} cells={conditions} yearsAbove={year === null ? summary.yearsAbove : null} />
+            <ConditionList defs={summary.conditions} cells={conditions} yearsAbove={period.kind === 'all' ? summary.yearsAbove : null} />
             <p className="m-0 mt-1.5 text-sm text-(--card-ink-3)">{t.conditions.key}</p>
             <p className="m-0 mt-1 text-sm text-(--card-ink-3)">{t.conditions.caveat}</p>
           </>

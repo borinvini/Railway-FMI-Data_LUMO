@@ -3,6 +3,7 @@ import {
 } from 'chart.js'
 import { useEffect, useRef } from 'react'
 import { useLang } from '../i18n'
+import type { Period } from '../lib/period'
 
 Chart.register(BarController, BarElement, CategoryScale, LinearScale, LineController, LineElement, PointElement, Tooltip)
 
@@ -27,21 +28,21 @@ const GRID = 'rgba(0, 47, 108, 0.14)'
 const FONT = 'Barlow, system-ui, sans-serif'
 
 /** Segments of the line outside the picked year are drawn faint, so the year stands out. */
-const segmentColor = (months: string[], year: number | null) => (ctx: { p1DataIndex: number }) =>
-  year === null || months[ctx.p1DataIndex].startsWith(String(year)) ? BLUE : FADED
+const segmentColor = (months: string[], p: Period) => (ctx: { p1DataIndex: number }) =>
+  p.kind !== 'year' || months[ctx.p1DataIndex].startsWith(String(p.year)) ? BLUE : FADED
 
 interface MonthlyLineProps {
   months: string[]
   /** Average minutes late per month; null = no trains that month (a gap in the line). */
   avg: (number | null)[]
-  /** The picked year, drawn strong while the others fade; null draws everything strong. */
-  year: number | null
+  /** The picked period: a year is drawn strong while the others fade; otherwise all strong. */
+  period: Period
   ariaLabel: string
   height?: number
 }
 
 /** The delay of every month as one line. Chart.js is called directly, like the other charts. */
-export function MonthlyLine({ months, avg, year, ariaLabel, height = 220 }: MonthlyLineProps) {
+export function MonthlyLine({ months, avg, period, ariaLabel, height = 220 }: MonthlyLineProps) {
   const { t, f } = useLang()
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -62,7 +63,7 @@ export function MonthlyLine({ months, avg, year, ariaLabel, height = 220 }: Mont
           pointHoverBackgroundColor: BLUE,
           tension: 0.25,
           spanGaps: false,
-          segment: { borderColor: segmentColor(months, year) },
+          segment: { borderColor: segmentColor(months, period) },
         }],
       },
       options: {
@@ -101,7 +102,7 @@ export function MonthlyLine({ months, avg, year, ariaLabel, height = 220 }: Mont
       },
     })
     return () => chart.destroy()
-  }, [months, avg, year, t, f])
+  }, [months, avg, period, t, f])
 
   return (
     <div className="relative" style={{ height }}>
@@ -187,7 +188,7 @@ export function SeasonBars({ avg, ariaLabel, height = 200 }: SeasonBarsProps) {
 
 /** A tiny, axis-free version of the monthly line for the title card. Not interactive itself: the
  *  card wraps it in a button that opens the full charts. */
-export function Sparkline({ months, avg, year }: { months: string[]; avg: (number | null)[]; year: number | null }) {
+export function Sparkline({ months, avg, period }: { months: string[]; avg: (number | null)[]; period: Period }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -203,7 +204,7 @@ export function Sparkline({ months, avg, year }: { months: string[]; avg: (numbe
           borderWidth: 1.75,
           pointRadius: 0,
           tension: 0.25,
-          segment: { borderColor: segmentColor(months, year) },
+          segment: { borderColor: segmentColor(months, period) },
         }],
       },
       options: {
@@ -216,7 +217,7 @@ export function Sparkline({ months, avg, year }: { months: string[]; avg: (numbe
       },
     })
     return () => chart.destroy()
-  }, [months, avg, year])
+  }, [months, avg, period])
 
   return (
     <div className="relative h-11">
