@@ -1,6 +1,7 @@
 import { BarController, BarElement, CategoryScale, Chart, LinearScale, Tooltip } from 'chart.js'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLang } from '../i18n'
+import { monthsOfScope } from '../lib/period'
 import type { EmsStationFile, StationEms } from '../lib/types'
 
 Chart.register(BarController, BarElement, CategoryScale, LinearScale, Tooltip)
@@ -19,9 +20,9 @@ interface WeatherStationDetailsProps {
   stationName: string
   /** This weather station's file (data/ems/<file>.json); null while it is still loading. */
   file: EmsStationFile | null
-  /** "all" or the picked year, e.g. "2021": which period's tiles and months to show. */
+  /** "all", the picked year ("2021") or month ("m01"): which period's tiles and months to show. */
   scope: string
-  /** What the period is called on screen: "2018–2025" or "2021". */
+  /** What the period is called on screen: "2018–2025", "2021" or "January, 2018–2025". */
   period: string
   loadFailed: boolean
   /** One line tying a route pin's number to this pop-up's period-wide tiles; undefined otherwise. */
@@ -46,10 +47,11 @@ export default function WeatherStationDetails({ ems, stationName, file, scope, p
   const [view, setView] = useState<View>('temp')
   const weather = file?.scopes[scope] ?? null
 
-  // The months to draw: every month for all years, or the twelve of the picked year.
+  // The months to draw: every month for all years, the twelve of a picked year, or a picked
+  // calendar month in each year (one bar per year).
   const shownMonths = useMemo(() => {
     if (!file) return []
-    return file.months.flatMap((m, i) => (scope === 'all' || m.startsWith(scope) ? [{ m, i }] : []))
+    return monthsOfScope(file.months, scope).map((i) => ({ m: file.months[i], i }))
   }, [file, scope])
   const months = useMemo(() => shownMonths.map((x) => x.m), [shownMonths])
   // Stable identities, so a chart is only redrawn when the data (or the tab) changes.

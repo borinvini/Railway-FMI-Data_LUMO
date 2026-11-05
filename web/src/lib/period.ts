@@ -15,6 +15,21 @@ export function scopeOf(p: Period): string {
 
 export const samePeriod = (a: Period, b: Period): boolean => scopeOf(a) === scopeOf(b)
 
+/** Indexes of the "YYYY-MM" months a period file key covers: everything for "all", one year's
+ *  months for "2021", that calendar month of every year for "m01". */
+export function monthsOfScope(months: string[], scope: string): number[] {
+  const out: number[] = []
+  const month = /^m\d\d$/.test(scope) ? scope.slice(1) : null
+  months.forEach((m, i) => {
+    if (scope === 'all' || (month !== null ? m.slice(5, 7) === month : m.startsWith(scope))) out.push(i)
+  })
+  return out
+}
+
+/** The period Presentation mode runs in: a picked year stays, a picked month goes back to By year /
+ *  All years (the spec: Presentation start resets the mode to By year). */
+export const presentationPeriod = (p: Period): Period => (p.kind === 'month' ? ALL : p)
+
 const span = (years: number[]) => (years.length === 1 ? String(years[0]) : `${years[0]}–${years[years.length - 1]}`)
 
 /** Label for the period on screen: "2018–2025" for everything, "2021" for one year, "January,

@@ -89,7 +89,7 @@ export default function DelayTrends({ summary, period, onPeriod, onClose }: Dela
           {t.trends.title}
         </h2>
         <p className="m-0 mt-0.5 text-[15px] text-(--card-ink-2)">{t.trends.intro(label, period)}</p>
-        <PeriodPicker years={summary.years} period={period} onPeriod={onPeriod} yearColumns="grid-cols-5 sm:grid-cols-10" monthColumns="grid-cols-6 sm:grid-cols-12" className="mt-3 max-w-[560px]" />
+        <PeriodPicker years={summary.years} period={period} onPeriod={onPeriod} yearColumns="grid-cols-5 sm:grid-cols-10" monthColumns="grid-cols-6 sm:grid-cols-12" className="mt-3" />
 
         <h3 className="font-board mt-5 mb-1 text-[22px] font-semibold">{t.trends.monthTitle}</h3>
         <p className="m-0 mb-2 text-[15px] text-(--card-ink-2)">{t.trends.monthIntro}</p>

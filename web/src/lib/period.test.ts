@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { makeFmt } from '../i18n/format'
-import { ALL, periodLabel, periodShort, samePeriod, scopeOf, type Period } from './period'
+import { ALL, monthsOfScope, periodLabel, periodShort, presentationPeriod, samePeriod, scopeOf, type Period } from './period'
 
 const YEARS = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
 const jan: Period = { kind: 'month', month: 1 }
@@ -27,6 +27,27 @@ describe('periodLabel', () => {
   it('has a short form for the phone bar', () => {
     expect(periodShort(YEARS, jan, makeFmt('en'))).toBe('Jan, 2018–25')
     expect(periodShort(YEARS, ALL, makeFmt('en'))).toBe('2018–2025')
+  })
+})
+
+describe('monthsOfScope', () => {
+  const months = ['2019-01', '2019-02', '2020-01', '2020-07']
+  it('keeps that calendar month of every year for a month scope', () => {
+    expect(monthsOfScope(months, 'm01')).toEqual([0, 2])
+  })
+  it('keeps one year, or everything', () => {
+    expect(monthsOfScope(months, '2020')).toEqual([2, 3])
+    expect(monthsOfScope(months, 'all')).toEqual([0, 1, 2, 3])
+  })
+})
+
+describe('presentationPeriod', () => {
+  it('drops a picked month, back to By year / All years', () => {
+    expect(presentationPeriod(jan)).toEqual(ALL)
+  })
+  it('keeps a picked year and all years', () => {
+    expect(presentationPeriod({ kind: 'year', year: 2021 })).toEqual({ kind: 'year', year: 2021 })
+    expect(presentationPeriod(ALL)).toEqual(ALL)
   })
 })
 

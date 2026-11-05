@@ -31,7 +31,7 @@ import { PRESENT } from './lib/presentation'
 import { buildLiveRoute, buildTimeline, type LiveTimeline } from './lib/liveTrain'
 import { buildDelayProfile, buildLiveProfile } from './lib/liveProfile'
 import { routeStationValues, routeWeatherPins, summarizeRoute, type StationValue } from './lib/routeStats'
-import { ALL, periodLabel, periodShort, scopeOf, type Period } from './lib/period'
+import { ALL, periodLabel, periodShort, presentationPeriod, scopeOf, type Period } from './lib/period'
 import { useLang } from './i18n'
 import type { ConnectionFeature, EmsStationFile, FinlandGeoJSON, PredictorFile, RoutePattern, RouteStatsFile, RouteTrendsFile, StationFeature, StationStats, SummaryFile, WeatherPin } from './lib/types'
 
@@ -335,9 +335,10 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [live])
 
-  // Presentation mode starts from a clean map: no journey, selection, route or open pop-up (the picked
-  // year stays).
+  // Presentation mode starts from a clean map: no journey, selection, route or open pop-up. A picked
+  // year stays; a picked month goes back to By year / All years.
   const startPresenting = useCallback(() => {
+    setPeriodPick(presentationPeriod)
     setLive(null)
     setSelected(null)
     setRouteStart(null)
