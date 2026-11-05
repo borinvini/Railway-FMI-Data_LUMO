@@ -9,6 +9,8 @@ import { formatSnow } from '../lib/weatherFormat'
  */
 export const fi = (f: Fmt): Dict => {
   const trains = (n: number) => `${f.int(n)} ${n === 1 ? 'juna' : 'junaa'}`
+  // A period label that starts a sentence: the month names are lower case in Finnish.
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
   const points = (n: number) => `${n} ${n === 1 ? 'prosenttiyksikkö' : 'prosenttiyksikköä'}`
   return {
     docTitle: 'Suomen kaukojunat · 2018–2025',
@@ -36,7 +38,7 @@ export const fi = (f: Fmt): Dict => {
 
     summary: {
       title: 'Kaukojunat Suomessa',
-      tapHint: (period) => `${period}. Napauta mitä tahansa asemaa kartalla.`,
+      tapHint: (period) => `${cap(period)}. Napauta mitä tahansa asemaa kartalla.`,
       allYearsChip: 'Kaikki vuodet',
       yearGroup: 'Vuosi',
       monthGroup: 'Kuukausi',
@@ -190,7 +192,7 @@ export const fi = (f: Fmt): Dict => {
       colWorst: 'Huonoin 10 % matkoista myöhässä',
       colCancelled: 'Peruttu',
       footnote: (period) =>
-        `${period}. Pääluvut ja taulukko kattavat tätä reittiä kulkevien junien koko matkat, jotka voivat alkaa ennen reittiä tai jatkua sen jälkeen; pysäkkikohtaiset luvut perustuvat kunkin pysäkin omiin saapumisiin.`,
+        `${cap(period)}. Pääluvut ja taulukko kattavat tätä reittiä kulkevien junien koko matkat, jotka voivat alkaa ennen reittiä tai jatkua sen jälkeen; pysäkkikohtaiset luvut perustuvat kunkin pysäkin omiin saapumisiin.`,
       missing: (n) => ` ${n} junayhteydellä ei ole tallennettuja tilastoja.`,
       stopTip: (avg, n) => `${f.dec(avg, 1)} min myöhässä · ${trains(n)}`,
       stopAria: 'Pylväskaavio tyypillisestä myöhästymisestä reitin pysäkeillä',
@@ -219,7 +221,7 @@ export const fi = (f: Fmt): Dict => {
 
     weather: {
       title: (name) => `Sääasema ${name}`,
-      intro: (km, station, period) => `${f.dec(km, 1)} km päässä asemalta ${station}. ${period}, silloin kun junia oli lähellä.`,
+      intro: (km, station, period) => `${f.dec(km, 1)} km päässä asemalta ${station}. ${cap(period)}, silloin kun junia oli lähellä.`,
       routeNote: (temp, snow) =>
         `Tämän reitin junien aikaan: keskimäärin ${temp === null ? '–' : f.temp(temp)}${snow === null ? '' : `, lunta ${formatSnow(snow)}`}.`,
       closer: (name, km) =>

@@ -34,7 +34,14 @@ export default function PeriodPicker({
       {byMonth ? (
         <div role="group" aria-label={t.summary.monthGroup} className={`grid gap-1.5 ${monthColumns}`}>
           {f.monthsShort.map((short, i) => (
-            <Chip key={short} active={period.month === i + 1} onClick={() => onPeriod({ kind: 'month', month: i + 1 })} label={f.months[i]}>
+            <Chip
+              key={short}
+              active={period.month === i + 1}
+              onClick={() => onPeriod({ kind: 'month', month: i + 1 })}
+              label={f.months[i]}
+              // The condensed face keeps the longest Finnish names ("maalis", "marras") inside a chip.
+              className="font-board !px-0 !text-[17px] tracking-[0.01em]"
+            >
               {short}
             </Chip>
           ))}
