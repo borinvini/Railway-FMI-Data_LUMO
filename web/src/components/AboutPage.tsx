@@ -7,6 +7,7 @@ import { GITHUB_URL, GithubMark } from './Footer'
 import { useLang } from '../i18n'
 
 const PROFILE_URL = 'https://www.oulu.fi/en/researchers/vinicius-pozzobon-borin'
+const EMAIL = 'vinicius.borin@oulu.fi'
 
 /** The dataset paper. Proper names, so not translated. */
 const PAPER = {
@@ -24,6 +25,15 @@ function External() {
   return (
     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} className="h-3.5 w-3.5" aria-hidden="true">
       <path d="M6 3H3v10h10v-3M9 3h4v4M13 3 7 9" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function Envelope() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} className="h-4 w-4" aria-hidden="true">
+      <rect x="2" y="3.5" width="12" height="9" rx="1.5" />
+      <path d="m2.5 4.5 5.5 4.5 5.5-4.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
@@ -106,6 +116,10 @@ export default function AboutPage({ onClose }: { onClose: () => void }) {
             <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className={linkCls}>
               <GithubMark />
               GitHub
+            </a>
+            <a href={`mailto:${EMAIL}`} className={linkCls}>
+              <Envelope />
+              {EMAIL}
             </a>
           </div>
 
