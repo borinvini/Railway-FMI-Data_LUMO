@@ -226,8 +226,11 @@ function WeatherControls({ month, monthIndex, value, onChange }: WeatherControls
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-col gap-2 sm:flex-row sm:gap-5">
-        <label className="flex min-w-0 flex-1 items-center gap-3">
-          <span className={figure}>{degrees(cur.temp)}</span>
+        <label className="flex min-w-0 flex-1 items-center gap-3" title={p.tempAria}>
+          <span className="flex shrink-0 items-center gap-1.5">
+            <ThermometerIcon />
+            <span className={figure}>{degrees(cur.temp)}</span>
+          </span>
           <input
             type="range"
             min={0}
@@ -240,8 +243,11 @@ function WeatherControls({ month, monthIndex, value, onChange }: WeatherControls
           />
         </label>
         {snows.length > 1 ? (
-          <label className="flex min-w-0 flex-1 items-center gap-3">
-            <span className={figure}>{cur.snow} cm</span>
+          <label className="flex min-w-0 flex-1 items-center gap-3" title={p.snowAria}>
+            <span className="flex shrink-0 items-center gap-1.5">
+              <SnowflakeIcon />
+              <span className={figure}>{cur.snow} cm</span>
+            </span>
             <input
               type="range"
               min={0}
@@ -272,6 +278,35 @@ function WeatherControls({ month, monthIndex, value, onChange }: WeatherControls
         )}
       </div>
     </div>
+  )
+}
+
+/** Small line icons that say which weather slider is which (temperature, snow depth). Decorative:
+ *  the sliders carry their names in aria-label, and the row's title shows them on hover. */
+const iconProps = {
+  width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
+  strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const,
+  'aria-hidden': true, className: 'shrink-0 text-(--card-ink-2)',
+}
+
+function ThermometerIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M10 13.5V5a2 2 0 0 1 4 0v8.5a4 4 0 1 1-4 0Z" />
+      <path d="M12 9v7.5" />
+      <circle cx="12" cy="17" r="1.3" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+function SnowflakeIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M12 2.5v19M3.8 7.25l16.4 9.5M3.8 16.75l16.4-9.5" />
+      <path d="m9.5 4 2.5 2 2.5-2M9.5 20l2.5-2 2.5 2" />
+      <path d="m4.6 10.4 3.1-.6-1-3M19.4 13.6l-3.1.6 1 3" />
+      <path d="m4.6 13.6 3.1.6-1 3M19.4 10.4l-3.1-.6 1-3" />
+    </svg>
   )
 }
 
