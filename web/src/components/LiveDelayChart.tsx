@@ -2,6 +2,7 @@ import { Chart, Filler, LinearScale, LineController, LineElement, PointElement }
 import { useEffect, useRef } from 'react'
 import { rgbCss, routeBadgeStep, ROUTE_BADGE_STEPS } from '../lib/colors'
 import { liveCursor } from '../lib/liveCursor'
+import { chartBox, liveCardClass, liveTickFont } from '../lib/liveChartStyle'
 import { delayUpTo, type DelayProfile, type ProfilePoint } from '../lib/liveProfile'
 import { subscribeLiveKm } from '../lib/liveStore'
 import { useLang } from '../i18n'
@@ -10,7 +11,6 @@ Chart.register(LineController, LineElement, PointElement, LinearScale, Filler)
 
 const MUTED = '#8597ab'
 const GRID = 'rgba(156, 195, 232, 0.12)'
-const FONT = "'Barlow Condensed', Barlow, system-ui, sans-serif"
 
 /** The thresholds between the three delay colours, minutes (see ROUTE_BADGE_STEPS). */
 const LEVELS = [2, 5]
@@ -24,7 +24,7 @@ const levelColor = (minutes: number) => rgbCss(routeBadgeStep(minutes).fill)
  * area under it is banded in the same three colours, so the thresholds are visible at a glance. Axes
  * are fixed from the whole route.
  */
-export default function LiveDelayChart({ profile, chartHeight = 150, title = true }: { profile: DelayProfile; chartHeight?: number; title?: boolean }) {
+export default function LiveDelayChart({ profile, chartHeight = 150, title = true, grow = false }: { profile: DelayProfile; chartHeight?: number; title?: boolean; grow?: boolean }) {
   // Only the words around the chart change with the language; the axes hold numbers and names.
   const { t } = useLang()
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -84,7 +84,7 @@ export default function LiveDelayChart({ profile, chartHeight = 150, title = tru
             grid: { display: false },
             border: { color: GRID },
             ticks: {
-              color: MUTED, font: { size: 12, family: FONT }, maxRotation: 0, autoSkip: false,
+              color: MUTED, font: liveTickFont(), maxRotation: 0, autoSkip: false,
               callback: (value) => {
                 const v = Number(value)
                 if (v === 0) return profile.startName
@@ -98,7 +98,7 @@ export default function LiveDelayChart({ profile, chartHeight = 150, title = tru
             min: 0, max: profile.max,
             border: { display: false },
             grid: { color: GRID },
-            ticks: { color: MUTED, font: { size: 13, family: FONT }, stepSize: profile.step, callback: (v) => `${v} min` },
+            ticks: { color: MUTED, font: liveTickFont(1), stepSize: profile.step, callback: (v) => `${v} min` },
           },
         },
       },
@@ -114,18 +114,19 @@ export default function LiveDelayChart({ profile, chartHeight = 150, title = tru
     }
   }, [profile])
 
+  const box = chartBox(grow, chartHeight)
   return (
-    <div className="pointer-events-auto rounded-[10px] border border-(--line) bg-(--surface) px-[18px] pt-3 pb-2.5 backdrop-blur-[8px]">
-      {title && <div className="text-sm text-(--muted)">{t.live.delayTitle}</div>}
-      <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-sm text-(--muted)">
+    <div className={liveCardClass(grow)}>
+      {title && <div className="text-(length:--live-small) text-(--muted)">{t.live.delayTitle}</div>}
+      <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-(length:--live-small) text-(--muted)">
         {ROUTE_BADGE_STEPS.map((step, i) => (
           <span key={step.below} className="flex items-center gap-1.5">
-            <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: rgbCss(step.fill) }} />
+            <span className="inline-block h-[0.7em] w-[0.7em] rounded-sm" style={{ background: rgbCss(step.fill) }} />
             {t.legend.badges[i]}
           </span>
         ))}
       </div>
-      <div className="relative mt-2" style={{ height: chartHeight }}>
+      <div className={box.className} style={box.style}>
         <canvas ref={canvasRef} role="img" aria-label={t.live.delayAria} />
       </div>
     </div>

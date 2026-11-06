@@ -21,6 +21,12 @@
   /* Footer strip (components/Footer.tsx), one thin row; the bottom row, left column and map
      attribution keep clear of it. */
   --footer-h: 40px;
+  /* Play the journey: the cards' type grows with the screen. The minimums are the old fixed
+     sizes, so a 1280-wide screen and phones look as before. */
+  --live-name: clamp(28px, 2.3vw, 44px);
+  --live-body: clamp(15px, 1.1vw, 21px);
+  --live-small: clamp(14px, 0.9vw, 18px);
+  --live-pad: clamp(18px, 1.25vw, 26px);
 }
 
 /* Barlow (body) + Barlow Condensed (big numbers, titles): the railway-signage look. Both are

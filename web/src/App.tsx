@@ -647,11 +647,13 @@ export default function App() {
       )}
 
       {live && (
-        // The now-playing card with the weather chart under it, in the empty area west of Finland.
-        <div className="pointer-events-none absolute top-5 left-5 z-30 flex w-[min(380px,calc(100vw-40px))] flex-col gap-3">
+        // The now-playing card with the two charts under it, in the empty area west of Finland. It
+        // grows with the screen (inside the map's 36% left padding) and the charts share the height
+        // down to just above the bottom row (Reset view), so a big screen gets big charts.
+        <div className="pointer-events-none absolute top-5 bottom-[calc(var(--footer-h)+76px)] left-5 z-30 flex w-[clamp(380px,30vw,600px)] flex-col gap-3">
           {liveCard}
-          {liveDelayProfile && <LiveDelayChart profile={liveDelayProfile} />}
-          {liveProfile && <LiveChart profile={liveProfile} />}
+          {liveDelayProfile && <LiveDelayChart profile={liveDelayProfile} grow />}
+          {liveProfile && <LiveChart profile={liveProfile} grow />}
         </div>
       )}
 

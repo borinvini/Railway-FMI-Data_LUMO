@@ -26,19 +26,19 @@ export default function LiveCard({ stopName, delay, temp, snow, reached, total, 
   ].filter((x): x is string => x !== null)
 
   return (
-    <div className="pointer-events-auto rounded-[10px] border border-(--line) bg-(--surface) px-[18px] py-3.5 backdrop-blur-[8px]">
+    <div className="pointer-events-auto shrink-0 rounded-[10px] border border-(--line) bg-(--surface) px-(--live-pad) py-3.5 backdrop-blur-[8px]">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-sm text-(--muted)">{t.live.typical}</div>
-          <div className="font-board mt-0.5 truncate text-[28px] leading-tight font-semibold text-(--text)">
+          <div className="text-(length:--live-small) text-(--muted)">{t.live.typical}</div>
+          <div className="font-board mt-0.5 truncate text-(length:--live-name) leading-tight font-semibold text-(--text)">
             {stopName ?? t.live.ready}
           </div>
-          <div className="min-h-5 text-[15px] text-(--muted)">{figures.join(', ')}</div>
+          <div className="min-h-5 text-(length:--live-body) text-(--muted)">{figures.join(', ')}</div>
         </div>
         <button
           type="button"
           onClick={onStop}
-          className="min-h-11 shrink-0 cursor-pointer rounded-lg border border-(--line) px-4 text-[15px] text-(--text) hover:bg-[rgba(156,195,232,0.12)]"
+          className="min-h-11 shrink-0 cursor-pointer rounded-lg border border-(--line) px-4 text-(length:--live-body) text-(--text) hover:bg-[rgba(156,195,232,0.12)]"
         >
           {t.live.stop}
         </button>
@@ -50,7 +50,7 @@ export default function LiveCard({ stopName, delay, temp, snow, reached, total, 
             style={{ width: `${total > 0 ? Math.round((reached / total) * 100) : 0}%` }}
           />
         </div>
-        <div className="text-sm text-(--muted)">{t.live.progress(Math.max(reached, 0), total)}</div>
+        <div className="text-(length:--live-small) text-(--muted)">{t.live.progress(Math.max(reached, 0), total)}</div>
       </div>
     </div>
   )

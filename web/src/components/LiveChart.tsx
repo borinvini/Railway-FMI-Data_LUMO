@@ -4,6 +4,7 @@ import { liveCursor } from '../lib/liveCursor'
 import { subscribeLiveKm } from '../lib/liveStore'
 import { profileUpTo, type LiveProfile, type ProfilePoint } from '../lib/liveProfile'
 import { useLang } from '../i18n'
+import { chartBox, liveCardClass, liveTickFont } from '../lib/liveChartStyle'
 
 Chart.register(LineController, LineElement, PointElement, LinearScale, Filler)
 
@@ -13,7 +14,6 @@ const TEMP = '#5eead4'
 const SNOW = '#9cc3e8'
 const MUTED = '#8597ab'
 const GRID = 'rgba(156, 195, 232, 0.12)'
-const FONT = "'Barlow Condensed', Barlow, system-ui, sans-serif"
 
 /**
  * The weather chart for a Live run: temperature and snow depth along the route, drawn as the train
@@ -21,7 +21,7 @@ const FONT = "'Barlow Condensed', Barlow, system-ui, sans-serif"
  * pushed straight into Chart.js from the animation loop's distance (lib/liveStore.ts), never through
  * React state. Averages at each stop, not readings.
  */
-export default function LiveChart({ profile, chartHeight = 170, title = true }: { profile: LiveProfile; chartHeight?: number; title?: boolean }) {
+export default function LiveChart({ profile, chartHeight = 170, title = true, grow = false }: { profile: LiveProfile; chartHeight?: number; title?: boolean; grow?: boolean }) {
   // Only the words around the chart change with the language; the axes hold numbers and names.
   const { t } = useLang()
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -59,7 +59,7 @@ export default function LiveChart({ profile, chartHeight = 170, title = true }: 
             grid: { display: false },
             border: { color: GRID },
             ticks: {
-              color: MUTED, font: { size: 12, family: FONT }, maxRotation: 0, autoSkip: false,
+              color: MUTED, font: liveTickFont(), maxRotation: 0, autoSkip: false,
               // Only the two ends are labelled, with the station names.
               callback: (value) => {
                 const v = Number(value)
@@ -78,13 +78,13 @@ export default function LiveChart({ profile, chartHeight = 170, title = true }: 
               color: (ctx) => (ctx.tick.value === 0 ? 'rgba(94, 234, 212, 0.55)' : GRID),
               lineWidth: (ctx) => (ctx.tick.value === 0 ? 1.5 : 1),
             },
-            ticks: { color: TEMP, font: { size: 13, family: FONT }, stepSize: profile.tempStep, callback: (v) => `${v}°` },
+            ticks: { color: TEMP, font: liveTickFont(1), stepSize: profile.tempStep, callback: (v) => `${v}°` },
           },
           ySnow: {
             position: 'right', min: 0, max: profile.snowMax,
             border: { display: false },
             grid: { drawOnChartArea: false },
-            ticks: { color: SNOW, font: { size: 13, family: FONT }, stepSize: profile.snowStep, callback: (v) => `${v} cm` },
+            ticks: { color: SNOW, font: liveTickFont(1), stepSize: profile.snowStep, callback: (v) => `${v} cm` },
           },
         },
       },
@@ -102,10 +102,11 @@ export default function LiveChart({ profile, chartHeight = 170, title = true }: 
     }
   }, [profile])
 
+  const box = chartBox(grow, chartHeight)
   return (
-    <div className="pointer-events-auto rounded-[10px] border border-(--line) bg-(--surface) px-[18px] pt-3 pb-2.5 backdrop-blur-[8px]">
-      {title && <div className="text-sm text-(--muted)">{t.live.weatherTitle}</div>}
-      <div className="mt-1 flex items-center gap-4 text-sm text-(--muted)">
+    <div className={liveCardClass(grow)}>
+      {title && <div className="text-(length:--live-small) text-(--muted)">{t.live.weatherTitle}</div>}
+      <div className="mt-1 flex items-center gap-4 text-(length:--live-small) text-(--muted)">
         <span className="flex shrink-0 items-center gap-3">
           <span className="flex items-center gap-1.5">
             <span className="inline-block h-0.5 w-4 rounded-full" style={{ background: TEMP }} />
@@ -117,7 +118,7 @@ export default function LiveChart({ profile, chartHeight = 170, title = true }: 
           </span>
         </span>
       </div>
-      <div className="relative mt-2" style={{ height: chartHeight }}>
+      <div className={box.className} style={box.style}>
         <canvas ref={canvasRef} role="img" aria-label={t.live.weatherAria} />
       </div>
     </div>
