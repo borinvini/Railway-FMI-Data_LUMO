@@ -14,8 +14,8 @@ type MutableLayer = LayerSpecification & { paint?: Record<string, unknown>; layo
  * See CLAUDE.md "Camera". Do not derive this from fitBounds.
  */
 export const DEFAULT_VIEW = {
-  center: [24.635713828561506, 63.3503682327765] as [number, number],
-  zoom: 5.853516957291411,
+  center: [23.885371441707093, 63.06450601168174] as [number, number],
+  zoom: 5.096456016950647,
   pitch: 61.37740676562255,
   bearing: -14.062336607182147,
 }

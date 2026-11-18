@@ -48,7 +48,8 @@ export const PRESENT = {
  * not offset values. The zoom dives in over a place and pulls back out; the tilt rises and falls.
  */
 export const TOUR: readonly Camera[] = [
-  { lon: 25.3, lat: 62.6, zoom: 6.25, pitch: 62, bearing: 5 }, // all of Finland filling the free area (the first view: no empty side)
+  // The first view = DEFAULT_VIEW (lib/mapStyle.ts), the owner's chosen home camera.
+  { lon: 23.885371441707093, lat: 63.06450601168174, zoom: 5.096456016950647, pitch: 61.37740676562255, bearing: -14.062336607182147 },
   { lon: 25.0, lat: 60.9, zoom: 7.2, pitch: 64, bearing: 35 }, // the Helsinki coast, looking north-east over land
   { lon: 23.9, lat: 61.7, zoom: 6.9, pitch: 62, bearing: -25 }, // Tampere, swinging left
   { lon: 28.3, lat: 62.7, zoom: 6.8, pitch: 64, bearing: 30 }, // the eastern lakes (Kuopio, Joensuu)
